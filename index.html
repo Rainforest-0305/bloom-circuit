@@ -1,0 +1,1944 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Bloom Circuit</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="application-name" content="Bloom Circuit">
+<meta name="apple-mobile-web-app-title" content="BloomCircuit">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="description" content="Plant, tend and chain-harvest a living garden across 24 stages and four seasons. 18 crops, 6 weather types and a 14-node permanent upgrade tree.">
+<meta name="theme-color" content="#04161c">
+<style>
+  :root{
+    color-scheme:dark;
+    --bg:#04161c;--ink:#effff8;--dim:#9fc4b8;--faint:#6f9188;
+    --panel:rgba(8,32,39,.9);--panel2:rgba(10,40,47,.72);
+    --line:rgba(176,255,221,.16);--line2:rgba(176,255,221,.3);
+    --mint:#79f2bd;--mint2:#38cda2;--gold:#ffd166;--coral:#ff7a85;--violet:#c3a4ff;--sky:#8ae6ff;
+    --r1:14px;--r2:20px;--r3:28px;
+    --ease:cubic-bezier(.22,.8,.28,1);
+    --safeT:env(safe-area-inset-top,0px);--safeB:env(safe-area-inset-bottom,0px);
+    --safeL:env(safe-area-inset-left,0px);--safeR:env(safe-area-inset-right,0px);
+  }
+  *{box-sizing:border-box;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;width:100%;height:100%;overflow:hidden;background:var(--bg);
+    font-family:Inter,ui-rounded,"Segoe UI","Noto Sans CJK KR","Noto Sans JP","Yu Gothic",Meiryo,"Malgun Gothic",Arial,sans-serif;
+    touch-action:none;word-break:keep-all;overflow-wrap:break-word;line-break:strict}
+  /* keep-all stops Korean particles orphaning, but it would stop Japanese and
+     Chinese from wrapping at all — those scripts break between characters. */
+  /* !important is required: component rules such as ".node .nd" carry higher
+     specificity than this language override, so without it Japanese text kept
+     word-break:keep-all, never wrapped, and blew the lab grid past its column. */
+  html[lang="ja"],html[lang="ja"] *{word-break:normal!important;line-break:normal!important}
+  #wrap{position:fixed;inset:0;overflow:hidden;background:#04161c}
+  canvas#game{position:absolute;inset:0;width:100%;height:100%;display:block}
+
+  /* ---------- buttons ---------- */
+  button{font-family:inherit;border:1px solid var(--line);background:rgba(7,29,36,.84);color:var(--ink);
+    border-radius:999px;font-weight:800;font-size:clamp(13px,1.7vmin,16px);line-height:1;padding:.8em 1.1em;
+    min-height:44px;cursor:pointer;transition:transform .16s var(--ease),box-shadow .2s var(--ease),background .2s var(--ease),border-color .2s var(--ease),opacity .2s}
+  button:hover:not(:disabled){transform:translateY(-2px);border-color:var(--line2);box-shadow:0 10px 26px rgba(0,0,0,.32)}
+  button:active:not(:disabled){transform:translateY(0) scale(.97)}
+  button:disabled{opacity:.42;cursor:default}
+  button:focus-visible{outline:3px solid var(--gold);outline-offset:3px}
+  .primary{border:0;background:linear-gradient(135deg,#8dfbc8,#2fbf95);color:#04231c;
+    box-shadow:0 14px 34px rgba(54,217,166,.28);font-size:clamp(15px,2.2vmin,20px);padding:1em 2em;font-weight:900;letter-spacing:-.01em}
+  .primary:hover:not(:disabled){box-shadow:0 18px 42px rgba(54,217,166,.4)}
+  .ghost{background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.12)}
+  .gold{border:0;background:linear-gradient(135deg,#ffe08a,#f2a93b);color:#37220a;box-shadow:0 12px 30px rgba(255,190,80,.24)}
+  .iconBtn{min-width:44px;min-height:44px;padding:0;display:grid;place-items:center;border-radius:14px;
+    background:rgba(4,24,29,.7);backdrop-filter:blur(10px);font-size:15px}
+
+  /* ---------- language ---------- */
+  .langRow{display:flex;gap:2px;flex-wrap:nowrap;justify-content:center;padding:4px;border:1px solid var(--line);
+    border-radius:14px;background:rgba(4,24,29,.66);backdrop-filter:blur(10px);max-width:100%;
+    overflow-x:auto;scrollbar-width:none}
+  .langRow::-webkit-scrollbar{display:none}
+  .lang-btn{flex:1 1 auto;min-width:32px;min-height:36px;border:1px solid transparent;background:transparent;color:#9dbfb3;
+    border-radius:10px;padding:6px 4px;font-weight:900;font-size:11px;letter-spacing:.02em}
+  .lang-btn:hover{color:var(--ink);background:rgba(255,255,255,.08);transform:none;box-shadow:none}
+  .lang-btn.active{color:#05251e;background:linear-gradient(135deg,var(--gold),var(--mint));box-shadow:0 4px 14px rgba(121,242,189,.28)}
+
+  /* ---------- screens ---------- */
+  /* Menus float over the live garden canvas — keep the scrim light so the
+     season, weather and flowers stay visible behind the cards. */
+  .screen{position:absolute;inset:0;z-index:10;display:flex;flex-direction:column;align-items:center;
+    padding:calc(14px + var(--safeT)) calc(14px + var(--safeR)) calc(14px + var(--safeB)) calc(14px + var(--safeL));
+    background:radial-gradient(90% 62% at 50% 42%,rgba(3,18,24,.62) 0%,rgba(3,18,23,.34) 62%,rgba(3,16,21,.18) 100%);
+    backdrop-filter:blur(1.5px) saturate(1.06);transition:opacity .3s var(--ease),transform .3s var(--ease);overflow:hidden}
+  #scTitle,#scResult,#scPause,#scTut{justify-content:center}
+  #scMap,#scLab{background:linear-gradient(180deg,rgba(3,20,26,.62) 0%,rgba(3,16,21,.8) 40%,rgba(2,12,16,.88) 100%)}
+  .screen.hidden{opacity:0;pointer-events:none;transform:scale(.985)}
+  .scroller{width:100%;max-width:1060px;overflow-y:auto;overflow-x:hidden;flex:1;touch-action:pan-y;
+    scrollbar-width:thin;padding:2px 2px 26px;-webkit-overflow-scrolling:touch}
+  .scroller::-webkit-scrollbar{width:6px}
+  .scroller::-webkit-scrollbar-thumb{background:rgba(121,242,189,.25);border-radius:6px}
+
+  .card{position:relative;overflow:hidden;width:min(94vw,560px);border:1px solid rgba(165,255,220,.22);border-radius:var(--r3);
+    padding:clamp(20px,4.4vmin,40px);text-align:center;
+    background:linear-gradient(155deg,rgba(15,58,60,.94),rgba(5,27,34,.96));
+    box-shadow:0 28px 90px rgba(0,0,0,.55),inset 0 1px rgba(255,255,255,.08)}
+  .card:before{content:"";position:absolute;inset:-55%;pointer-events:none;
+    background:conic-gradient(from 90deg,transparent,rgba(121,242,189,.09),transparent,rgba(255,209,102,.08),transparent);
+    animation:orbit 16s linear infinite}
+  .card>*{position:relative}
+  @keyframes orbit{to{transform:rotate(1turn)}}
+
+  h1{margin:0;font-size:clamp(36px,7.4vmin,70px);line-height:.94;letter-spacing:-.055em;font-weight:900;
+    background:linear-gradient(135deg,#f4fffb,#79f2bd 52%,#ffd166);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .kicker{color:var(--gold);font-weight:900;letter-spacing:.16em;font-size:clamp(10px,1.5vmin,12.5px);margin-bottom:12px;text-transform:uppercase}
+  .desc{margin:16px auto 18px;color:#cfeade;line-height:1.62;font-size:clamp(13.5px,1.85vmin,17px);max-width:38ch;word-break:keep-all}
+  h2.secTitle{margin:0;font-size:clamp(20px,3.2vmin,30px);letter-spacing:-.03em;color:var(--ink);font-weight:900}
+  .secSub{margin:5px 0 0;color:var(--dim);font-size:clamp(11.5px,1.6vmin,14px);line-height:1.5;max-width:44ch;word-break:keep-all}
+
+  /* ---------- title screen ---------- */
+  #scTitle{justify-content:center;gap:0}
+  #titleCard{width:min(94vw,520px);padding:clamp(15px,2.6vmin,30px) clamp(16px,3vmin,34px)}
+  #titleCard .kicker{font-size:clamp(9.5px,1.45vmin,12.5px);letter-spacing:.1em}
+  #titleCard h1{font-size:clamp(30px,6.4vmin,62px)}
+  #titleCard .kicker{margin-bottom:8px}
+  #titleCard .desc{margin:11px auto 13px;max-width:34ch;font-size:clamp(12.5px,1.7vmin,16px);line-height:1.5}
+  .titleStats{display:flex;gap:7px;justify-content:center;margin:0 0 12px;flex-wrap:wrap}
+  .pill{display:flex;align-items:center;gap:6px;padding:6px 11px;border-radius:999px;background:rgba(255,255,255,.06);
+    border:1px solid var(--line);font-size:clamp(10px,1.45vmin,12.5px);font-weight:800;color:#d7f3e8;white-space:nowrap}
+  .pill b{color:var(--gold);font-size:1.12em}
+  .pill.mint b{color:var(--mint)}
+  .pill.violet b{color:var(--violet)}
+  .titleBtns{display:flex;flex-direction:column;gap:8px;align-items:stretch}
+  .titleBtns .primary{padding:.85em 2em}
+  .titleBtns .row2{display:flex;gap:8px}
+  .titleBtns .row2 button{flex:1;min-width:0;padding:.7em .6em;font-size:clamp(11.5px,1.55vmin,14.5px)}
+  #titleLang{margin:0 auto;padding-bottom:2px;display:flex;justify-content:center;width:min(96vw,520px)}
+  .verTag{margin:9px 0 8px;color:#9fc4b8;font-size:11px;font-weight:800;letter-spacing:.05em;
+    padding:5px 12px;border-radius:999px;background:rgba(4,24,29,.55);border:1px solid var(--line)}
+
+  /* ---------- stage map ---------- */
+  .topBar{width:100%;max-width:1060px;display:flex;align-items:center;gap:9px;margin-bottom:4px}
+  .topBar .grow{flex:1;min-width:0}
+  .topBar .grow h2{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .subLine{width:100%;max-width:1060px;margin:0 0 12px;padding:0 2px;color:var(--dim);
+    font-size:clamp(11px,1.55vmin,13.5px);line-height:1.45;word-break:keep-all;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  /* on narrow screens the lab shortcut collapses to a glyph so the screen
+     title keeps its room (the label stays in aria-label) */
+  @media(max-width:559px){
+    #mapLab{font-size:0;min-width:44px;width:44px;padding:0;display:grid;place-items:center}
+    #mapLab:after{content:"\25C7";font-size:18px;font-weight:900;color:var(--violet)}
+  }
+  .chapter{margin:0 0 26px}
+  .chapHead{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:0 0 10px;padding:0 4px}
+  .chapHead h3{margin:0;font-size:clamp(15px,2.2vmin,20px);font-weight:900;letter-spacing:-.02em;color:var(--ink)}
+  .chapHead .cs{color:var(--dim);font-size:clamp(11px,1.5vmin,13px);flex:1;min-width:120px;word-break:keep-all}
+  .chapHead .cstar{color:var(--gold);font-weight:900;font-size:12.5px;white-space:nowrap}
+  .stageGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:10px}
+  @media(min-width:700px){.stageGrid{grid-template-columns:repeat(auto-fill,minmax(132px,1fr))}}
+  .stageCard{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:5px;
+    min-height:126px;padding:11px 12px;border-radius:var(--r2);text-align:left;
+    background:linear-gradient(160deg,rgba(17,62,63,.8),rgba(6,30,37,.9));border:1px solid var(--line);overflow:hidden}
+  .stageCard:hover:not(:disabled){border-color:var(--line2)}
+  .stageCard .sn{font-size:clamp(19px,2.8vmin,26px);font-weight:900;letter-spacing:-.04em;color:var(--ink);line-height:1}
+  /* the size/limit line wraps too: "32 Aktionen" / "32 действия" were being
+     cut to "32 Aktio..." on narrow cards */
+  .stageCard .sg{font-size:10px;font-weight:800;color:var(--faint);letter-spacing:.04em;
+    line-height:1.3;overflow-wrap:anywhere;width:100%;min-width:0}
+  /* never clamp the goal text: long-word languages (de/ru) lost a whole second
+     goal to the ellipsis. The card grows instead, and JS shrinks the type a
+     little when a stage carries a very wordy pair of goals. */
+  .stageCard .sgoal{font-size:var(--sgf,10.5px);font-weight:700;color:var(--dim);line-height:1.34;
+    width:100%;min-width:0;overflow-wrap:anywhere;overflow:visible;min-height:4em}
+  .stageCard.cleared{background:linear-gradient(160deg,rgba(24,84,72,.82),rgba(6,32,36,.9));border-color:rgba(121,242,189,.3)}
+  .stageCard.locked{opacity:.4}
+  .stageCard.next{border-color:var(--gold);box-shadow:0 0 0 2px rgba(255,209,102,.18),0 12px 28px rgba(0,0,0,.3)}
+  .stageCard .lock{position:absolute;right:10px;top:10px;font-size:14px;opacity:.7}
+  .stageCard .newBadge{position:absolute;right:8px;top:8px;background:linear-gradient(135deg,var(--gold),#ff9d5c);
+    color:#3a2408;font-size:8.5px;font-weight:900;letter-spacing:.1em;padding:3px 6px;border-radius:6px}
+  .stars{display:flex;gap:3px;margin-top:auto}
+  .st{width:13px;height:13px;background:rgba(255,255,255,.16);display:block;
+    clip-path:polygon(50% 0%,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%)}
+  .st.on{background:linear-gradient(160deg,#ffe89a,#f5a623);box-shadow:0 0 8px rgba(255,190,80,.5)}
+  .st.big{width:34px;height:34px}
+
+  /* ---------- lab (upgrade tree) ---------- */
+  /* content hugs the top of the scroll box: vertical centring left a large
+     empty band under the header on tall desktop viewports */
+  #scLab .scroller{display:flex;flex-direction:column;justify-content:flex-start}
+  .branches{display:grid;grid-template-columns:1fr;gap:16px;align-items:start;width:100%}
+  @media(min-width:720px){.branches{grid-template-columns:repeat(3,1fr);gap:14px}}
+  .branch{position:relative;padding:12px 10px 4px;border-radius:var(--r2);border:1px solid var(--line);
+    background:linear-gradient(180deg,rgba(10,42,46,.72),rgba(5,24,30,.66))}
+  .branch>h4{margin:0 0 10px;text-align:center;font-size:13px;font-weight:900;letter-spacing:.14em;text-transform:uppercase}
+  .branch.b0>h4{color:var(--mint)}.branch.b1>h4{color:var(--gold)}.branch.b2>h4{color:var(--violet)}
+  .branch:before{content:"";position:absolute;z-index:0;left:26px;top:42px;bottom:18px;width:2px;
+    background:repeating-linear-gradient(180deg,rgba(160,240,210,.22) 0 5px,transparent 5px 11px)}
+  .node{position:relative;z-index:1;width:100%;display:block;text-align:left;margin-bottom:9px;padding:11px 12px 11px 40px;
+    border-radius:var(--r1);background:#0a2b32;border:1px solid var(--line);min-height:auto}
+  .node .dot{position:absolute;left:20px;top:16px}
+  .node .nh{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+  .node .nn{font-size:13.5px;font-weight:900;letter-spacing:-.01em;color:var(--ink);flex:1;min-width:0}
+  .node .nc{font-size:11px;font-weight:900;color:var(--gold);white-space:nowrap}
+  .node .nd{font-size:11px;font-weight:600;color:var(--dim);line-height:1.42;word-break:keep-all}
+  .node .ns{margin-top:6px;font-size:9.5px;font-weight:900;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)}
+  .node.owned{border-color:rgba(121,242,189,.45);background:linear-gradient(150deg,#175447,#0a2b32)}
+  .node.owned .ns{color:var(--mint)}
+  .node.owned .nc{display:none}
+  .node.blocked{opacity:.45}
+  .node.afford{border-color:rgba(255,209,102,.4);box-shadow:0 0 0 1px rgba(255,209,102,.12)}
+  .node .dot{width:9px;height:9px;border-radius:50%;background:rgba(255,255,255,.22);flex:0 0 auto}
+  .node.owned .dot{background:var(--mint);box-shadow:0 0 10px var(--mint)}
+
+  /* ---------- HUD ---------- */
+  #hud{position:absolute;left:0;right:0;top:0;z-index:6;pointer-events:none;
+    padding:calc(8px + var(--safeT)) calc(10px + var(--safeR)) 8px calc(10px + var(--safeL));
+    transition:opacity .25s var(--ease)}
+  #hud.hidden{opacity:0;pointer-events:none}
+  .hudTop{display:flex;align-items:stretch;gap:7px;max-width:900px;margin:0 auto}
+  .hudTop>*{pointer-events:auto}
+  .stat{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:2px;padding:7px 11px;border-radius:var(--r1);
+    background:rgba(4,24,29,.72);border:1px solid var(--line);backdrop-filter:blur(10px)}
+  .stat small{font-size:9px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);white-space:nowrap}
+  .stat b{font-size:clamp(15px,2.3vmin,21px);font-weight:900;letter-spacing:-.02em;color:var(--ink);white-space:nowrap}
+  .stat.time b{font-variant-numeric:tabular-nums}
+  .stat.time.warn b{color:#ff9b9b}
+  .stat.wx{flex:1.6;overflow:hidden}
+  .stat.wx b{font-size:clamp(11.5px,1.7vmin,14px);overflow:hidden;text-overflow:ellipsis}
+  .stat.wx small{overflow:hidden;text-overflow:ellipsis}
+  .stat.wx small.fx{letter-spacing:.01em;text-transform:none;color:var(--mint);
+    font-size:clamp(8.5px,1.25vmin,10.5px);font-variant-numeric:tabular-nums}
+  .goalRow{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;max-width:900px;margin:7px auto 0}
+  .goal{pointer-events:none;display:flex;align-items:center;gap:7px;padding:6px 11px;border-radius:999px;
+    background:rgba(4,24,29,.74);border:1px solid var(--line);backdrop-filter:blur(10px);
+    font-size:clamp(10px,1.45vmin,12.5px);font-weight:800;color:#d9f2e7;max-width:100%;transition:.3s var(--ease)}
+  .goal .gn{font-weight:900;color:var(--gold);font-variant-numeric:tabular-nums;white-space:nowrap}
+  .goal.done{border-color:rgba(121,242,189,.55);background:rgba(20,74,64,.8);color:#dcffe9}
+  .goal.done .gn{color:var(--mint)}
+  .goal.done:after{content:"✓";color:var(--mint);font-weight:900}
+  #chainTag{position:absolute;left:50%;transform:translateX(-50%) scale(.7);opacity:0;
+    top:calc(100% + 7px);font-weight:900;font-size:clamp(13px,2.1vmin,18px);color:#3a2408;
+    padding:6px 15px;border-radius:999px;letter-spacing:.02em;
+    background:linear-gradient(135deg,#ffe08a,#f5a623);
+    box-shadow:0 6px 22px rgba(255,170,50,.45),0 0 0 3px rgba(255,209,102,.16);
+    white-space:nowrap;transition:.18s var(--ease)}
+  #chainTag.on{opacity:1;transform:translateX(-50%) scale(1)}
+
+  /* ---------- seed rail ---------- */
+  #rail{position:absolute;left:0;right:0;bottom:0;z-index:6;
+    padding:8px calc(8px + var(--safeR)) calc(8px + var(--safeB)) calc(8px + var(--safeL));
+    transition:opacity .25s var(--ease)}
+  #rail.hidden{opacity:0;pointer-events:none}
+  /* fade the rail edges so it reads as a scrollable shelf of many seeds */
+  #rail[data-scroll="1"] .railWrap{-webkit-mask-image:linear-gradient(90deg,transparent 0,#000 22px,#000 calc(100% - 22px),transparent 100%);
+    mask-image:linear-gradient(90deg,transparent 0,#000 22px,#000 calc(100% - 22px),transparent 100%)}
+  .railWrap{max-width:900px;margin:0 auto}
+  .railInner{display:flex;gap:7px;overflow-x:auto;padding:3px;max-width:900px;margin:0 auto;
+    justify-content:safe center;scrollbar-width:none;touch-action:pan-x;scroll-behavior:smooth}
+  .railInner::-webkit-scrollbar{display:none}
+  .seed{flex:0 0 auto;width:78px;min-height:78px;padding:7px 6px 8px;border-radius:16px;display:flex;flex-direction:column;
+    align-items:center;gap:3px;background:linear-gradient(180deg,rgba(13,48,52,.86),rgba(5,26,32,.92));border:1px solid var(--line)}
+  .seed .ico{width:34px;height:34px;background-size:contain;background-repeat:no-repeat;background-position:center;flex:0 0 auto}
+  .seed .sn2{font-size:9.5px;font-weight:800;color:#d6efe4;line-height:1.15;text-align:center;height:2.3em;overflow:hidden;word-break:keep-all}
+  .seed .sc{font-size:10.5px;font-weight:900;color:var(--gold);font-variant-numeric:tabular-nums}
+  .seed[data-on="1"]{border-color:var(--gold);background:linear-gradient(180deg,rgba(255,209,102,.24),rgba(7,29,36,.94));
+    box-shadow:0 0 0 2px rgba(255,209,102,.16),0 10px 24px rgba(0,0,0,.34)}
+  .seed[data-poor="1"]{opacity:.44}
+  .seed[data-poor="1"] .sc{color:var(--coral)}
+
+  /* ---------- result ---------- */
+  #resStars{display:flex;gap:10px;justify-content:center;margin:14px 0 6px}
+  #resStars .st{transform:scale(0);transition:transform .42s var(--ease)}
+  #resStars .st.pop{transform:scale(1)}
+  .statRows{margin:16px 0 18px;display:flex;flex-direction:column;gap:1px;border-radius:var(--r1);overflow:hidden}
+  .statRows div{display:flex;justify-content:space-between;gap:12px;padding:9px 13px;background:rgba(255,255,255,.045);
+    font-size:clamp(12px,1.75vmin,14.5px)}
+  .statRows span{color:var(--dim);font-weight:700}
+  .statRows b{color:var(--ink);font-weight:900;font-variant-numeric:tabular-nums}
+  .banner{margin:10px 0 0;padding:10px 14px;border-radius:var(--r1);font-size:clamp(11.5px,1.7vmin,14px);font-weight:800;
+    background:linear-gradient(135deg,rgba(255,209,102,.2),rgba(121,242,189,.16));border:1px solid rgba(255,209,102,.3);color:#ffeec2;word-break:keep-all}
+  .banner.hidden{display:none}
+  .btnRow{display:flex;gap:9px;justify-content:center;flex-wrap:wrap}
+  .btnRow button{flex:1;min-width:120px}
+
+  /* ---------- tutorial ---------- */
+  #tutCard{width:min(94vw,460px)}
+  .tutArt{height:112px;margin:2px 0 16px;border-radius:var(--r2);background:rgba(0,0,0,.22);
+    border:1px solid var(--line);display:grid;place-items:center;overflow:hidden;position:relative}
+  .tutArt canvas{width:100%;height:100%;display:block}
+  .dots{display:flex;gap:6px;justify-content:center;margin:14px 0 16px}
+  .dots i{width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,.2);transition:.3s var(--ease)}
+  .dots i.on{background:var(--mint);width:20px;border-radius:4px}
+
+  /* ---------- toast ---------- */
+  /* snackbar above the seed rail so it never covers the board */
+  #toast{position:absolute;z-index:8;left:50%;bottom:var(--toastB,86px);transform:translate(-50%,12px);opacity:0;
+    padding:10px 18px;border-radius:999px;background:rgba(6,28,34,.95);border:1px solid rgba(255,209,102,.34);
+    color:#ffe6a6;font-weight:900;font-size:clamp(12px,1.8vmin,15px);transition:.22s var(--ease);pointer-events:none;
+    text-align:center;max-width:min(84vw,460px);word-break:keep-all;box-shadow:0 12px 34px rgba(0,0,0,.45)}
+  #toast.show{opacity:1;transform:translate(-50%,0)}
+  #flash{position:absolute;inset:0;z-index:7;pointer-events:none;opacity:0;transition:opacity .5s var(--ease);
+    background:radial-gradient(60% 45% at 50% 45%,rgba(255,225,150,.4),transparent 70%)}
+  #flash.on{opacity:1;transition:opacity .1s}
+
+  @media(max-width:420px){
+    .stat small{font-size:8px}
+    .seed{width:70px}
+    .statRows div{padding:8px 11px}
+  }
+  @media(max-height:560px) and (orientation:landscape){
+    .card{padding:16px 20px}
+    .desc{margin:10px auto 12px}
+    .tutArt{height:74px}
+    .seed{width:66px;min-height:66px}
+    .seed .ico{width:26px;height:26px}
+  }
+  @media(prefers-reduced-motion:reduce){*{animation-duration:.001s!important;transition-duration:.06s!important}}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="game" aria-label="Bloom Circuit garden board"></canvas>
+
+  <!-- ============ HUD ============ -->
+  <div id="hud" class="hidden">
+    <div class="hudTop">
+      <button id="pauseBtn" class="iconBtn" aria-label="Pause game">II</button>
+      <div class="stat"><small id="lCoins">Coins</small><b id="vCoins">0</b></div>
+      <div class="stat time" id="timeStat"><small id="lTime">Time</small><b id="vTime">0</b></div>
+      <div class="stat wx" id="wxStat"><small id="lWx">Weather</small><b id="vWx">-</b><small class="fx" id="vWxFx">-</small></div>
+    </div>
+    <div class="goalRow" id="goalRow"></div>
+    <div id="chainTag"></div>
+  </div>
+
+  <!-- ============ seed rail ============ -->
+  <div id="rail" class="hidden"><div class="railWrap"><div class="railInner" id="railInner" aria-label="Seed selection"></div></div></div>
+
+  <div id="toast"></div>
+  <div id="flash"></div>
+
+  <!-- ============ title ============ -->
+  <div id="scTitle" class="screen">
+    <div class="card" id="titleCard">
+      <div class="kicker" id="tKicker"></div>
+      <h1 id="tTitle"></h1>
+      <p class="desc" id="tTagline"></p>
+      <div class="titleStats">
+        <div class="pill"><span id="tStarLbl"></span><b id="tStarVal">0</b></div>
+        <div class="pill mint"><span id="tStageLbl"></span><b id="tStageVal">0</b></div>
+        <div class="pill violet"><span id="tEssLbl"></span><b id="tEssVal">0</b></div>
+      </div>
+      <div class="titleBtns">
+        <button class="primary" id="btnPlay"></button>
+        <div class="row2">
+          <button class="ghost" id="btnMap"></button>
+          <button class="ghost" id="btnLab"></button>
+        </div>
+        <div class="row2">
+          <button class="ghost" id="btnHow"></button>
+          <button class="ghost" id="btnSound" aria-label="Toggle sound"></button>
+        </div>
+      </div>
+    </div>
+    <div class="verTag" id="tVer"></div>
+    <div id="titleLang"><div class="langRow" id="langRow"></div></div>
+  </div>
+
+  <!-- ============ stage map ============ -->
+  <div id="scMap" class="screen hidden">
+    <div class="topBar">
+      <button class="iconBtn" id="mapBack" aria-label="Back">&#8592;</button>
+      <div class="grow"><h2 class="secTitle" id="mapTitle"></h2></div>
+      <div class="pill"><span id="mapStarLbl"></span><b id="mapStarVal">0</b></div>
+      <button class="ghost" id="mapLab" style="min-height:44px;padding:.6em 1em;white-space:nowrap"></button>
+    </div>
+    <p class="subLine" id="mapSub"></p>
+    <div class="scroller" id="mapList"></div>
+  </div>
+
+  <!-- ============ lab ============ -->
+  <div id="scLab" class="screen hidden">
+    <div class="topBar">
+      <button class="iconBtn" id="labBack" aria-label="Back">&#8592;</button>
+      <div class="grow"><h2 class="secTitle" id="labTitle"></h2></div>
+      <div class="pill violet"><span id="labEssLbl"></span><b id="labEssVal">0</b></div>
+    </div>
+    <p class="subLine" id="labSub"></p>
+    <div class="scroller"><div class="branches" id="labTree"></div></div>
+  </div>
+
+  <!-- ============ pause ============ -->
+  <div id="scPause" class="screen hidden">
+    <div class="card" style="width:min(92vw,420px)">
+      <div class="kicker" id="pKicker"></div>
+      <h2 class="secTitle" id="pTitle" style="font-size:clamp(26px,4.6vmin,40px)"></h2>
+      <p class="desc" id="pHint"></p>
+      <div class="titleBtns">
+        <button class="primary" id="pResume"></button>
+        <div class="row2">
+          <button class="ghost" id="pRestart"></button>
+          <button class="ghost" id="pQuit"></button>
+        </div>
+        <button class="ghost" id="pSound"></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ result ============ -->
+  <div id="scResult" class="screen hidden">
+    <div class="card" style="width:min(94vw,470px)">
+      <div class="kicker" id="rKicker"></div>
+      <h2 class="secTitle" id="rTitle" style="font-size:clamp(26px,5vmin,44px)"></h2>
+      <div id="resStars"><i class="st big"></i><i class="st big"></i><i class="st big"></i></div>
+      <div class="statRows" id="rStats"></div>
+      <div class="banner hidden" id="rBanner"></div>
+      <div class="btnRow" style="margin-top:16px">
+        <button class="ghost" id="rMap"></button>
+        <button class="ghost" id="rRetry"></button>
+        <button class="primary" id="rNext"></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ tutorial ============ -->
+  <div id="scTut" class="screen hidden" style="justify-content:center">
+    <div class="card" id="tutCard">
+      <div class="kicker" id="uKicker"></div>
+      <h2 class="secTitle" id="uTitle" style="font-size:clamp(23px,4vmin,34px)"></h2>
+      <div class="tutArt"><canvas id="tutCanvas" width="420" height="224"></canvas></div>
+      <p class="desc" id="uBody" style="margin:0 auto 4px"></p>
+      <div class="dots" id="uDots"><i class="on"></i><i></i><i></i><i></i></div>
+      <div class="btnRow">
+        <button class="ghost" id="uSkip"></button>
+        <button class="primary" id="uNext"></button>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+(() => {
+"use strict";
+/* =========================================================================
+   BLOOM CIRCUIT — single-file garden management game.
+   No external resources: all art is Canvas/CSS, all audio is WebAudio synth.
+   ========================================================================= */
+
+/* ---------------------------------------------------------------- i18n -- */
+const I18N={"en":{"name":"EN","title":"Bloom Circuit","kicker":"24 stages · 18 seeds · 14 research nodes","tagline":"Grow a living garden across four seasons. Chain your harvests, read the weather, and make every bed count.","play":"Play","cont":"Continue","map":"Garden map","retry":"Retry","next":"Next stage","resume":"Resume","restart":"Restart stage","quitStage":"Leave stage","back":"Back","upgrades":"Greenhouse Lab","howTo":"How to play","ariaGame":"Bloom Circuit garden board","ariaSound":"Toggle sound","ariaPause":"Pause game","ariaBack":"Back","stageSelect":"Garden map","stageSub":"Pick a stage. Clear it to open the next one and unlock new seeds.","stageWord":"Stage","locked":"Locked","unlockAt":"Clear stage {n} first","totalStars":"Stars","essence":"Essence","stagesLbl":"Cleared","gCoin":"Hold {n} coins at once","gEarn":"Earn {n} coins in total","gHarv":"Harvest {n} crops","gCrop":"Harvest {n} of {c}","gChain":"Reach a chain of {n}","gPure":"Let no crop wither","gVary":"Harvest {n} different crop types","gFull":"Fill every bed at once, {n} times","limTime":"{n}s","limMoves":"{n} actions","movesLeft":"Actions","hCoins":"Coins","hTime":"Time","hWeather":"Weather","hCombo":"CHAIN","sGrow":"Growth","sValue":"Value","noCoins":"Not enough coins","withered":"A crop withered","ripe":"RIPE","tend":"TEND","goalDone":"Goal complete!","allDone":"All goals complete!","paused":"Paused","pausedKick":"Take a breath","resumeHint":"Your garden is waiting exactly where you left it.","hintPlant":"Pick a seed below, then tap an empty bed","hintTend":"Tap a growing crop to push its growth forward","hintHarvest":"Sparkling crops are ripe — tap to harvest","stoneMsg":"Stone cleared","stoneNeed":"Clearing this stone costs {n} coins","rWin":"Stage clear!","rLose":"Stage failed","rKicker":"Market report","rScore":"Score","rCoins":"Coins earned","rHarv":"Harvests","rCombo":"Best chain","rTime":"Time left","rStars":"Stars","rEssence":"Essence gained","rNewBest":"New best score!","rNewCrop":"New seed unlocked: {c}","rFailTime":"The clock ran out before you completed every goal.","rFailMoves":"You ran out of actions.","rFailPure":"A crop withered away.","labTitle":"Greenhouse Lab","labSub":"Spend Essence on permanent research. Each branch changes how your garden plays.","uBuy":"Research","uOwned":"Active","uLocked":"Needs the previous node","uNoEssence":"Not enough Essence","uDone":"Research complete","branches":["Growth","Wealth","Skill"],"chapters":["Seedling Terrace","Amber Fields","Mist Highlands","Aurora Greenhouse"],"chapterSub":["Learn the rhythm of soil and sun.","Wider beds, richer markets.","Harsh weather, harder targets.","One last winter bloom."],"upg":["Irrigation","Deep Roots","Glass House","Auto-Tend","Head Start","Market Ties","Seed Trader","Golden Touch","Nest Egg","Windfall","Quick Hands","Chain Master","Stone Cutter","Weather Sense"],"upgD":["Every crop grows 14% faster.","Growth speed rises a further 16%.","Ripe crops wither 55% more slowly.","One growing bed is tended for you every 7 seconds.","Every seed you sow starts at 18% growth.","Every harvest sells for 12% more.","Seeds cost 22% less.","Each chain step adds 6% to the sale price.","Begin every stage with 70 extra coins.","Every 8th harvest of a run pays double.","Tending pushes growth 55% further.","The chain window stays open 1.1s longer.","Clearing a stone costs 60% less.","Weather and season bonuses are 50% stronger."],"crops":["Mint Sprig","Dew Fern","Ember Berry","Coral Kelp","Rain Orchid","Sunlit Tulip","Velvet Moss","Star Bloom","Amber Wheat","Moon Lily","Ghost Poppy","Thunder Vine","Frost Bell","Gilded Rose","Prism Cactus","Nova Sunflower","Crystal Ivy","Heart Lotus"],"fx":["Steady and dependable.","Tending pushes it twice as far.","+30% value under Golden Sun or Heat Shimmer.","Holds the chain window open 1.6s longer.","Grows 60% faster in Soft Rain or Silver Mist.","The quickest bloom of its price class.","The next seed you sow costs 40% less.","Counts as two harvests towards goals.","+40% value under Aurora Veil or Silver Mist.","Payout swings from x0.5 to x2.2.","When harvested, it adds +25% growth to neighbouring beds.","Never withers, however long it waits.","+12% value for every step of the chain.","Ignores every weather penalty.","Needs tending twice, then pays out big.","Worth +9 more for each harvest this run.","Gives 6 seconds back to the clock."],"wx":["Golden Sun","Silver Mist","Gentle Breeze","Soft Rain","Heat Shimmer","Aurora Veil"],"sea":["Spring","Summer","Autumn","Winter"],"tutT":["Sow a seed","Tend the bed","Chain the harvest","Read the goals"],"tutB":["Pick a seed from the rail at the bottom, then tap an empty bed to sow it. Each seed costs coins and ripens at its own pace.","Tap a crop that is still growing to tend it — its growth jumps forward at once. Tending has a short cooldown per bed.","Sparkling crops are ripe. Harvest them one after another without pausing to build a chain bonus that multiplies every sale.","Each stage lists its goals along the top. Finish them all inside the time or action limit to earn up to three stars."],"tutSkip":"Skip","tutNext":"Next","tutDone":"Start growing","cost":"Cost","sec":"s","newTag":"NEW","soundOn":"Sound: on","soundOff":"Sound: off"},"ko":{"name":"KO","title":"블룸 서킷","kicker":"24개 스테이지 · 18종 씨앗 · 14개 연구","tagline":"사계절 내내 살아 숨 쉬는 정원을 가꾸세요. 수확을 쉼 없이 이어 연쇄를 쌓고, 날씨를 읽어 모든 밭을 뜻대로 다스리세요.","play":"플레이","cont":"이어하기","map":"정원 지도","retry":"다시 도전","next":"다음 스테이지","resume":"계속하기","restart":"스테이지 재시작","quitStage":"나가기","back":"뒤로","upgrades":"온실 연구소","howTo":"플레이 방법","ariaGame":"블룸 서킷 정원 보드","ariaSound":"소리 켜기/끄기","ariaPause":"게임 일시정지","ariaBack":"뒤로 가기","stageSelect":"정원 지도","stageSub":"스테이지를 고르세요. 클리어하면 다음 스테이지와 새 씨앗이 열립니다.","stageWord":"스테이지","locked":"잠김","unlockAt":"스테이지 {n} 클리어 필요","totalStars":"별","essence":"정수","stagesLbl":"클리어","gCoin":"코인 {n}개 동시 보유","gEarn":"코인 {n}개 누적 획득","gHarv":"작물 {n}개 수확","gCrop":"{c} {n}개 수확","gChain":"{n}연쇄 달성","gPure":"작물이 하나도 시들지 않게 하기","gVary":"서로 다른 작물 {n}종 수확","gFull":"모든 밭을 동시에 채우기 {n}회","limTime":"{n}초","limMoves":"행동 {n}회","movesLeft":"행동","hCoins":"코인","hTime":"시간","hWeather":"날씨","hCombo":"연쇄","sGrow":"성장","sValue":"가치","noCoins":"코인이 부족합니다","withered":"작물이 시들었습니다","ripe":"수확!","tend":"돌보기","goalDone":"목표 달성!","allDone":"모든 목표 달성!","paused":"일시정지","pausedKick":"잠시 쉬어가기","resumeHint":"정원은 멈춘 그 자리에서 기다리고 있습니다.","hintPlant":"아래에서 씨앗을 고르고 빈 밭을 누르세요","hintTend":"자라는 작물을 눌러 성장을 앞당기세요","hintHarvest":"반짝이는 작물은 다 익었습니다 — 눌러서 수확하세요","stoneMsg":"돌을 치웠습니다","stoneNeed":"이 돌을 치우려면 코인 {n}개가 필요합니다","rWin":"스테이지 클리어!","rLose":"스테이지 실패","rKicker":"시장 결산","rScore":"점수","rCoins":"획득 코인","rHarv":"수확 횟수","rCombo":"최대 연쇄","rTime":"남은 시간","rStars":"별","rEssence":"획득 정수","rNewBest":"최고 점수 경신!","rNewCrop":"새 씨앗 해금: {c}","rFailTime":"목표를 모두 달성하기 전에 시간이 끝났습니다.","rFailMoves":"행동 횟수를 모두 소진했습니다.","rFailPure":"작물이 시들어 버렸습니다.","labTitle":"온실 연구소","labSub":"정수를 써서 영구 연구를 완성하세요. 계열마다 정원을 다루는 방식이 달라집니다.","uBuy":"연구","uOwned":"적용 중","uLocked":"위 연구가 필요합니다","uNoEssence":"정수가 부족합니다","uDone":"연구 완료","branches":["성장","재화","기술"],"chapters":["새싹 테라스","황금 들판","안개 고원","오로라 온실"],"chapterSub":["흙과 햇살의 리듬을 익히세요.","넓어진 밭, 더 큰 시장.","거친 날씨, 더 높은 목표.","마지막 겨울의 개화."],"upg":["관개 수로","깊은 뿌리","유리 온실","자동 돌보미","선행 발아","시장 판로","종자 상인","황금손","종잣돈","횡재","빠른 손길","연쇄 장인","석공 도구","날씨 감각"],"upgD":["모든 작물이 14% 더 빠르게 자랍니다.","성장 속도가 16% 더 올라갑니다.","익은 작물이 55% 더 천천히 시듭니다.","7초마다 밭 하나를 자동으로 돌봐 줍니다.","심은 씨앗이 성장 18% 상태에서 시작합니다.","수확 판매가가 12% 오릅니다.","씨앗 값이 22% 싸집니다.","연쇄 1단계마다 판매가가 6% 오릅니다.","스테이지마다 코인 70개를 더 갖고 시작합니다.","한 판에서 8번째 수확마다 판매가가 두 배가 됩니다.","돌보기로 오르는 성장량이 55% 커집니다.","연쇄 유지 시간이 1.1초 늘어납니다.","돌 제거 비용이 60% 줄어듭니다.","날씨와 계절 보너스가 50% 강해집니다."],"crops":["민트 새싹","이슬 고사리","불꽃 열매","산호 해초","빗물 난초","햇살 튤립","벨벳 이끼","별빛 꽃","황금 밀","달빛 백합","유령 양귀비","천둥 덩굴","서리 초롱꽃","황금 장미","프리즘 선인장","노바 해바라기","수정 담쟁이","하트 연꽃"],"fx":["꾸준하고 믿음직합니다.","돌보면 성장이 두 배로 오릅니다.","황금 햇살이나 열기 아지랑이에서 가치가 30% 오릅니다.","연쇄 유지 시간을 1.6초 늘려 줍니다.","보슬비나 은빛 안개에서 60% 더 빠르게 자랍니다.","같은 가격대에서 가장 빨리 핍니다.","다음에 심는 씨앗 값이 40% 싸집니다.","목표 집계에서 수확 2회로 계산됩니다.","오로라 장막이나 은빛 안개에서 가치가 40% 오릅니다.","수익이 0.5배에서 2.2배까지 요동칩니다.","수확하면 이웃 밭의 성장이 25% 오릅니다.","아무리 오래 두어도 시들지 않습니다.","연쇄 1단계마다 가치가 12% 오릅니다.","모든 날씨 페널티를 무시합니다.","두 번 돌봐야 하지만 크게 벌어 줍니다.","이번 판 수확 1회마다 가치가 9씩 오릅니다.","수확하면 시간을 6초 돌려 줍니다."],"wx":["황금 햇살","은빛 안개","산들바람","보슬비","열기 아지랑이","오로라 장막"],"sea":["봄","여름","가을","겨울"],"tutT":["씨앗 심기","밭 돌보기","수확 이어가기","목표 읽기"],"tutB":["아래 씨앗 목록에서 하나를 고르고 빈 밭을 누르면 심어집니다. 씨앗마다 값과 자라는 속도가 다릅니다.","아직 자라는 중인 작물을 누르면 성장이 즉시 앞당겨집니다. 돌보기에는 밭마다 짧은 재사용 대기시간이 있습니다.","반짝이는 작물은 다 익었다는 뜻입니다. 쉬지 않고 연달아 수확하면 연쇄 보너스가 쌓여 판매가가 배로 늘어납니다.","각 스테이지의 목표는 화면 위쪽에 표시됩니다. 시간이나 행동 제한 안에 모두 달성하면 최대 별 3개를 받습니다."],"tutSkip":"건너뛰기","tutNext":"다음","tutDone":"시작하기","cost":"비용","sec":"초","newTag":"NEW","soundOn":"소리: 켜짐","soundOff":"소리: 꺼짐"},"es":{"name":"ES","title":"Circuito Floral","kicker":"24 niveles · 18 semillas · 14 investigaciones","tagline":"Cultiva un jardín vivo a lo largo de cuatro estaciones. Encadena cosechas, interpreta el clima y domina cada parcela.","play":"Jugar","cont":"Continuar","map":"Mapa del jardín","retry":"Reintentar","next":"Siguiente nivel","resume":"Reanudar","restart":"Reiniciar nivel","quitStage":"Salir del nivel","back":"Atrás","upgrades":"Laboratorio","howTo":"Cómo se juega","ariaGame":"Tablero del jardín de Circuito Floral","ariaSound":"Activar o desactivar el sonido","ariaPause":"Pausar el juego","ariaBack":"Volver","stageSelect":"Mapa del jardín","stageSub":"Elige un nivel. Al superarlo se abre el siguiente y se desbloquean semillas nuevas.","stageWord":"Nivel","locked":"Bloqueado","unlockAt":"Supera antes el nivel {n}","totalStars":"Estrellas","essence":"Esencia","stagesLbl":"Superados","gCoin":"Acumula {n} monedas a la vez","gEarn":"Gana {n} monedas en total","gHarv":"Cosecha {n} cultivos","gCrop":"Cosecha {n} x {c}","gChain":"Logra una cadena de {n}","gPure":"Que no se marchite ningún cultivo","gVary":"Cosecha {n} especies distintas","gFull":"Llena todas las parcelas a la vez, x{n}","limTime":"{n} s","limMoves":"{n} acciones","movesLeft":"Acciones","hCoins":"Monedas","hTime":"Tiempo","hWeather":"Clima","hCombo":"CADENA","sGrow":"Crece","sValue":"Valor","noCoins":"Monedas insuficientes","withered":"Un cultivo se marchitó","ripe":"MADURO","tend":"CUIDAR","goalDone":"¡Objetivo cumplido!","allDone":"¡Todos los objetivos cumplidos!","paused":"En pausa","pausedKick":"Respira un momento","resumeHint":"Tu jardín te espera justo donde lo dejaste.","hintPlant":"Elige una semilla abajo y toca una parcela vacía","hintTend":"Toca un cultivo en crecimiento para cuidarlo","hintHarvest":"Los cultivos que brillan están maduros: tócalos para cosechar","stoneMsg":"Piedra retirada","stoneNeed":"Retirar esta piedra cuesta {n} monedas","rWin":"¡Nivel superado!","rLose":"Nivel fallido","rKicker":"Informe del mercado","rScore":"Puntuación","rCoins":"Monedas ganadas","rHarv":"Cosechas","rCombo":"Mejor cadena","rTime":"Tiempo restante","rStars":"Estrellas","rEssence":"Esencia obtenida","rNewBest":"¡Nueva mejor puntuación!","rNewCrop":"Nueva semilla desbloqueada: {c}","rFailTime":"Se acabó el tiempo antes de cumplir todos los objetivos.","rFailMoves":"Te quedaste sin acciones.","rFailPure":"Un cultivo se marchitó.","labTitle":"Laboratorio del invernadero","labSub":"Gasta Esencia en investigaciones permanentes. Cada rama cambia tu forma de cultivar.","uBuy":"Investigar","uOwned":"Activa","uLocked":"Requiere el nodo anterior","uNoEssence":"Esencia insuficiente","uDone":"Investigación completada","branches":["Crecimiento","Riqueza","Oficio"],"chapters":["Terraza de Brotes","Campos de Ámbar","Tierras Altas de Niebla","Invernadero Aurora"],"chapterSub":["Aprende el ritmo de la tierra y el sol.","Parcelas más amplias, mercados más ricos.","Clima duro, metas más duras.","Una última floración de invierno."],"upg":["Riego","Raíces profundas","Casa de cristal","Cuidador automático","Ventaja inicial","Contactos de mercado","Tratante de semillas","Toque dorado","Ahorros","Golpe de suerte","Manos rápidas","Maestro de cadenas","Picapedrero","Instinto del clima"],"upgD":["Todos los cultivos crecen un 14% más rápido.","La velocidad de crecimiento sube otro 16%.","Los cultivos maduros se marchitan un 55% más despacio.","Una parcela en crecimiento se cuida sola cada 7 segundos.","Cada semilla empieza con un 18% de crecimiento.","Cada cosecha se vende un 12% más cara.","Las semillas cuestan un 22% menos.","Cada paso de la cadena añade un 6% al precio de venta.","Empieza cada nivel con 70 monedas extra.","Cada 8ª cosecha de una partida paga el doble.","Cuidar impulsa el crecimiento un 55% más.","La ventana de cadena dura 1,1 s más.","Retirar una piedra cuesta un 60% menos.","Las bonificaciones de clima y estación son un 50% mayores."],"crops":["Brote de menta","Helecho de rocío","Baya de brasa","Alga coralina","Orquídea de lluvia","Tulipán solar","Musgo de terciopelo","Flor estelar","Trigo ámbar","Lirio lunar","Amapola fantasma","Vid del trueno","Campanilla de escarcha","Rosa dorada","Cactus prisma","Girasol nova","Hiedra de cristal","Loto del corazón"],"fx":["Constante y de fiar.","Al cuidarlo avanza el doble.","+30% de valor con Sol dorado o Espejismo de calor.","Mantiene la cadena abierta 1,6 s más.","Crece un 60% más rápido con Lluvia o Niebla.","La floración más rápida de su gama de precio.","La siguiente semilla cuesta un 40% menos.","Cuenta como dos cosechas para los objetivos.","+40% de valor con Aurora o Niebla.","El pago oscila entre x0,5 y x2,2.","Al cosecharlo da +25% de crecimiento a sus vecinos.","Nunca se marchita, por mucho que espere.","+12% de valor por cada paso de la cadena.","Ignora toda penalización del clima.","Necesita dos cuidados y luego paga mucho.","Vale +9 más por cada cosecha de la partida.","Devuelve 6 segundos al reloj."],"wx":["Sol dorado","Niebla plateada","Brisa apacible","Lluvia suave","Espejismo de calor","Velo de aurora"],"sea":["Primavera","Verano","Otoño","Invierno"],"tutT":["Siembra","Cuida","Encadena","Objetivos"],"tutB":["Elige una semilla de la barra inferior y toca una parcela vacía para sembrarla. Cada semilla cuesta monedas y madura a su ritmo.","Toca un cultivo que aún esté creciendo para cuidarlo: su crecimiento avanza de golpe. Cada parcela tiene una breve espera.","Los cultivos que brillan están maduros. Cosecha uno tras otro sin pausa para crear una cadena que multiplica cada venta.","Cada nivel muestra sus objetivos arriba. Cúmplelos dentro del límite de tiempo o acciones para ganar hasta tres estrellas."],"tutSkip":"Saltar","tutNext":"Siguiente","tutDone":"Empezar a cultivar","cost":"Coste","sec":" s","newTag":"NUEVO","soundOn":"Sonido: activado","soundOff":"Sonido: desactivado"},"fr":{"name":"FR","title":"Circuit Floral","kicker":"24 niveaux · 18 graines · 14 recherches","tagline":"Cultivez un jardin vivant au fil de quatre saisons. Enchaînez les récoltes, lisez la météo et domptez chaque parcelle.","play":"Jouer","cont":"Continuer","map":"Carte du jardin","retry":"Réessayer","next":"Niveau suivant","resume":"Reprendre","restart":"Recommencer le niveau","quitStage":"Quitter le niveau","back":"Retour","upgrades":"Laboratoire","howTo":"Comment jouer","ariaGame":"Plateau de jardin Circuit Floral","ariaSound":"Activer ou couper le son","ariaPause":"Mettre le jeu en pause","ariaBack":"Retour","stageSelect":"Carte du jardin","stageSub":"Choisissez un niveau. Le terminer ouvre le suivant et débloque de nouvelles graines.","stageWord":"Niveau","locked":"Verrouillé","unlockAt":"Terminez d'abord le niveau {n}","totalStars":"Étoiles","essence":"Essence","stagesLbl":"Terminés","gCoin":"Détenir {n} pièces à la fois","gEarn":"Gagner {n} pièces au total","gHarv":"Récolter {n} cultures","gCrop":"Récolter {n} x {c}","gChain":"Atteindre une chaîne de {n}","gPure":"Ne laisser aucune culture faner","gVary":"Récolter {n} espèces différentes","gFull":"Remplir toutes les parcelles d'un coup, {n} fois","limTime":"{n} s","limMoves":"{n} actions","movesLeft":"Actions","hCoins":"Pièces","hTime":"Temps","hWeather":"Météo","hCombo":"CHAÎNE","sGrow":"Pousse","sValue":"Valeur","noCoins":"Pas assez de pièces","withered":"Une culture a fané","ripe":"MÛR","tend":"SOIGNER","goalDone":"Objectif atteint !","allDone":"Tous les objectifs atteints !","paused":"En pause","pausedKick":"Reprenez votre souffle","resumeHint":"Votre jardin vous attend exactement là où vous l'avez laissé.","hintPlant":"Choisissez une graine en bas, puis touchez une parcelle vide","hintTend":"Touchez une culture en croissance pour la soigner","hintHarvest":"Les cultures qui scintillent sont mûres — touchez pour récolter","stoneMsg":"Pierre dégagée","stoneNeed":"Dégager cette pierre coûte {n} pièces","rWin":"Niveau réussi !","rLose":"Niveau échoué","rKicker":"Rapport du marché","rScore":"Score","rCoins":"Pièces gagnées","rHarv":"Récoltes","rCombo":"Meilleure chaîne","rTime":"Temps restant","rStars":"Étoiles","rEssence":"Essence gagnée","rNewBest":"Nouveau meilleur score !","rNewCrop":"Nouvelle graine débloquée : {c}","rFailTime":"Le temps s'est écoulé avant que tous les objectifs soient atteints.","rFailMoves":"Vous n'avez plus d'actions.","rFailPure":"Une culture a fané.","labTitle":"Laboratoire de la serre","labSub":"Dépensez de l'Essence en recherches permanentes. Chaque branche change votre façon de cultiver.","uBuy":"Rechercher","uOwned":"Active","uLocked":"Nécessite le nœud précédent","uNoEssence":"Essence insuffisante","uDone":"Recherche terminée","branches":["Croissance","Richesse","Savoir-faire"],"chapters":["Terrasse des Pousses","Champs d'Ambre","Hautes Terres Brumeuses","Serre Aurore"],"chapterSub":["Apprenez le rythme de la terre et du soleil.","Des parcelles plus larges, des marchés plus riches.","Météo rude, objectifs plus durs.","Une dernière floraison d'hiver."],"upg":["Irrigation","Racines profondes","Serre de verre","Soin automatique","Longueur d'avance","Contacts au marché","Marchand de graines","Main de Midas","Bas de laine","Aubaine","Mains agiles","Maître des chaînes","Tailleur de pierre","Flair météo"],"upgD":["Toutes les cultures poussent 14% plus vite.","La vitesse de pousse augmente encore de 16%.","Les cultures mûres fanent 55% plus lentement.","Une parcelle en croissance est soignée toutes les 7 secondes.","Chaque graine semée démarre à 18% de croissance.","Chaque récolte se vend 12% plus cher.","Les graines coûtent 22% moins cher.","Chaque palier de chaîne ajoute 6% au prix de vente.","Commencez chaque niveau avec 70 pièces de plus.","Une récolte sur 8 rapporte le double.","Le soin fait progresser la pousse 55% plus loin.","La fenêtre de chaîne reste ouverte 1,1 s de plus.","Dégager une pierre coûte 60% moins cher.","Les bonus de météo et de saison sont 50% plus forts."],"crops":["Pousse de menthe","Fougère de rosée","Baie de braise","Algue corail","Orchidée de pluie","Tulipe solaire","Mousse de velours","Fleur étoilée","Blé d'ambre","Lys lunaire","Pavot fantôme","Vigne de foudre","Clochette de givre","Rose dorée","Cactus prisme","Tournesol nova","Lierre de cristal","Lotus du cœur"],"fx":["Régulière et fiable.","Le soin la fait avancer deux fois plus.","+30% de valeur sous Soleil doré ou Mirage.","Garde la fenêtre de chaîne ouverte 1,6 s de plus.","Pousse 60% plus vite sous Pluie ou Brume.","La floraison la plus rapide de sa gamme.","La graine suivante coûte 40% moins cher.","Compte pour deux récoltes dans les objectifs.","+40% de valeur sous Aurore ou Brume.","Le gain varie de x0,5 à x2,2.","À la récolte, donne +25% de pousse aux voisines.","Ne fane jamais, quelle que soit l'attente.","+12% de valeur par palier de chaîne.","Ignore toutes les pénalités de météo.","Demande deux soins, puis rapporte gros.","Vaut +9 de plus par récolte de la partie.","Rend 6 secondes au chronomètre."],"wx":["Soleil doré","Brume argentée","Brise douce","Pluie légère","Mirage de chaleur","Voile d'aurore"],"sea":["Printemps","Été","Automne","Hiver"],"tutT":["Semer","Soigner","Enchaîner","Objectifs"],"tutB":["Choisissez une graine dans la barre du bas, puis touchez une parcelle vide pour la semer. Chaque graine coûte des pièces et mûrit à son rythme.","Touchez une culture encore en croissance pour la soigner : sa pousse bondit aussitôt. Chaque parcelle a un court temps de recharge.","Les cultures qui scintillent sont mûres. Récoltez-les l'une après l'autre sans pause pour bâtir une chaîne qui multiplie chaque vente.","Chaque niveau affiche ses objectifs en haut. Remplissez-les dans la limite de temps ou d'actions pour gagner jusqu'à trois étoiles."],"tutSkip":"Passer","tutNext":"Suivant","tutDone":"Commencer à cultiver","cost":"Coût","sec":" s","newTag":"NOUVEAU","soundOn":"Son : activé","soundOff":"Son : coupé"},"pt":{"name":"PT","title":"Circuito Floral","kicker":"24 fases · 18 sementes · 14 pesquisas","tagline":"Cultive um jardim vivo ao longo de quatro estações. Encadeie colheitas, leia o clima e domine cada canteiro.","play":"Jogar","cont":"Continuar","map":"Mapa do jardim","retry":"Tentar de novo","next":"Próxima fase","resume":"Retomar","restart":"Reiniciar fase","quitStage":"Sair da fase","back":"Voltar","upgrades":"Laboratório","howTo":"Como jogar","ariaGame":"Tabuleiro do jardim Circuito Floral","ariaSound":"Ligar ou desligar o som","ariaPause":"Pausar o jogo","ariaBack":"Voltar","stageSelect":"Mapa do jardim","stageSub":"Escolha uma fase. Concluí-la abre a seguinte e libera sementes novas.","stageWord":"Fase","locked":"Bloqueada","unlockAt":"Conclua primeiro a fase {n}","totalStars":"Estrelas","essence":"Essência","stagesLbl":"Concluídas","gCoin":"Ter {n} moedas ao mesmo tempo","gEarn":"Ganhar {n} moedas no total","gHarv":"Colher {n} plantas","gCrop":"Colher {n} x {c}","gChain":"Alcançar uma corrente de {n}","gPure":"Não deixar nenhuma planta murchar","gVary":"Colher {n} espécies diferentes","gFull":"Encher todos os canteiros de uma vez, {n}x","limTime":"{n} s","limMoves":"{n} ações","movesLeft":"Ações","hCoins":"Moedas","hTime":"Tempo","hWeather":"Clima","hCombo":"CORRENTE","sGrow":"Cresce","sValue":"Valor","noCoins":"Moedas insuficientes","withered":"Uma planta murchou","ripe":"MADURA","tend":"CUIDAR","goalDone":"Objetivo concluído!","allDone":"Todos os objetivos concluídos!","paused":"Pausado","pausedKick":"Respire fundo","resumeHint":"Seu jardim espera exatamente onde você parou.","hintPlant":"Escolha uma semente abaixo e toque num canteiro vazio","hintTend":"Toque numa planta em crescimento para cuidar dela","hintHarvest":"Plantas brilhantes estão maduras — toque para colher","stoneMsg":"Pedra removida","stoneNeed":"Remover esta pedra custa {n} moedas","rWin":"Fase concluída!","rLose":"Fase perdida","rKicker":"Relatório do mercado","rScore":"Pontuação","rCoins":"Moedas ganhas","rHarv":"Colheitas","rCombo":"Melhor corrente","rTime":"Tempo restante","rStars":"Estrelas","rEssence":"Essência obtida","rNewBest":"Novo recorde de pontos!","rNewCrop":"Nova semente liberada: {c}","rFailTime":"O tempo acabou antes de cumprir todos os objetivos.","rFailMoves":"Você ficou sem ações.","rFailPure":"Uma planta murchou.","labTitle":"Laboratório da estufa","labSub":"Gaste Essência em pesquisas permanentes. Cada ramo muda o seu jeito de cultivar.","uBuy":"Pesquisar","uOwned":"Ativa","uLocked":"Precisa do nó anterior","uNoEssence":"Essência insuficiente","uDone":"Pesquisa concluída","branches":["Crescimento","Riqueza","Técnica"],"chapters":["Terraço das Mudas","Campos de Âmbar","Planalto da Névoa","Estufa Aurora"],"chapterSub":["Aprenda o ritmo da terra e do sol.","Canteiros maiores, mercados melhores.","Clima severo, metas mais duras.","Uma última floração de inverno."],"upg":["Irrigação","Raízes profundas","Casa de vidro","Cuidador automático","Vantagem inicial","Contatos de mercado","Negociante de sementes","Toque dourado","Pé-de-meia","Golpe de sorte","Mãos rápidas","Mestre das correntes","Cortador de pedra","Faro para o clima"],"upgD":["Todas as plantas crescem 14% mais rápido.","A velocidade de crescimento sobe mais 16%.","Plantas maduras murcham 55% mais devagar.","Um canteiro em crescimento é cuidado a cada 7 segundos.","Cada semente começa com 18% de crescimento.","Cada colheita rende 12% a mais.","As sementes custam 22% menos.","Cada passo da corrente soma 6% ao preço de venda.","Cada fase começa com 70 moedas extras.","A cada 8ª colheita da partida o valor dobra.","Cuidar avança o crescimento 55% mais.","A janela de corrente dura 1,1 s a mais.","Remover uma pedra custa 60% menos.","Os bônus de clima e estação ficam 50% mais fortes."],"crops":["Broto de menta","Samambaia de orvalho","Baga de brasa","Alga coralina","Orquídea da chuva","Tulipa solar","Musgo de veludo","Flor estelar","Trigo âmbar","Lírio lunar","Papoula fantasma","Trepadeira do trovão","Campânula de geada","Rosa dourada","Cacto prisma","Girassol Nova","Hera de cristal","Lótus do coração"],"fx":["Constante e confiável.","Ao cuidar, avança o dobro.","+30% de valor sob Sol Dourado ou Miragem.","Mantém a janela de corrente aberta 1,6 s a mais.","Cresce 60% mais rápido na Chuva ou Névoa.","A floração mais rápida da sua faixa de preço.","A próxima semente custa 40% menos.","Conta como duas colheitas nos objetivos.","+40% de valor sob Aurora ou Névoa.","O pagamento varia de x0,5 a x2,2.","Ao ser colhida dá +25% de crescimento aos vizinhos.","Nunca murcha, por mais que espere.","+12% de valor a cada passo da corrente.","Ignora toda penalidade de clima.","Precisa de dois cuidados e depois paga muito.","Vale +9 a mais por colheita da partida.","Devolve 6 segundos ao relógio."],"wx":["Sol dourado","Névoa prateada","Brisa suave","Chuva leve","Miragem de calor","Véu de aurora"],"sea":["Primavera","Verão","Outono","Inverno"],"tutT":["Semear","Cuidar","Encadear","Objetivos"],"tutB":["Escolha uma semente na barra de baixo e toque num canteiro vazio para semear. Cada semente custa moedas e amadurece no seu ritmo.","Toque numa planta ainda em crescimento para cuidar dela: o crescimento salta na hora. Cada canteiro tem uma breve espera.","Plantas brilhantes estão maduras. Colha uma após a outra sem pausa para formar uma corrente que multiplica cada venda.","Cada fase mostra seus objetivos no topo. Cumpra todos dentro do limite de tempo ou de ações para ganhar até três estrelas."],"tutSkip":"Pular","tutNext":"Próximo","tutDone":"Começar a cultivar","cost":"Custo","sec":" s","newTag":"NOVO","soundOn":"Som: ligado","soundOff":"Som: desligado"},"ru":{"name":"RU","title":"Цветочный контур","kicker":"24 уровня · 18 семян · 14 исследований","tagline":"Вырастите живой сад за четыре сезона. Собирайте урожай сериями, читайте погоду и подчините себе каждую грядку.","play":"Играть","cont":"Продолжить","map":"Карта сада","retry":"Заново","next":"Следующий уровень","resume":"Продолжить","restart":"Перезапустить уровень","quitStage":"Покинуть уровень","back":"Назад","upgrades":"Лаборатория","howTo":"Как играть","ariaGame":"Игровое поле сада Цветочный контур","ariaSound":"Включить или выключить звук","ariaPause":"Поставить игру на паузу","ariaBack":"Назад","stageSelect":"Карта сада","stageSub":"Выберите участок. Пройденный уровень открывает следующий и новые семена.","stageWord":"Уровень","locked":"Закрыто","unlockAt":"Сначала пройдите уровень {n}","totalStars":"Звёзды","essence":"Эссенция","stagesLbl":"Пройдено","gCoin":"Иметь одновременно монет: {n}","gEarn":"Заработать всего монет: {n}","gHarv":"Собрать растений: {n}","gCrop":"Собрать {n} x {c}","gChain":"Достичь серии из {n}","gPure":"Не дать ни одному растению увянуть","gVary":"Собрать разных видов: {n}","gFull":"Заполнить все грядки сразу ×{n}","limTime":"{n} с","limMoves":"Действий: {n}","movesLeft":"Действия","hCoins":"Монеты","hTime":"Время","hWeather":"Погода","hCombo":"СЕРИЯ","sGrow":"Рост","sValue":"Доход","noCoins":"Недостаточно монет","withered":"Растение увяло","ripe":"СОЗРЕЛО","tend":"УХОД","goalDone":"Цель выполнена!","allDone":"Все цели выполнены!","paused":"Пауза","pausedKick":"Небольшая передышка","resumeHint":"Ваш сад ждёт ровно там, где вы остановились.","hintPlant":"Выберите семена внизу и нажмите пустую грядку","hintTend":"Нажмите растущее растение, чтобы поухаживать","hintHarvest":"Сияющие растения созрели — нажмите, чтобы собрать","stoneMsg":"Камень убран","stoneNeed":"Стоимость уборки камня: {n}","rWin":"Уровень пройден!","rLose":"Уровень провален","rKicker":"Отчёт с рынка","rScore":"Очки","rCoins":"Заработано монет","rHarv":"Сборы","rCombo":"Лучшая серия","rTime":"Осталось времени","rStars":"Звёзды","rEssence":"Получено эссенции","rNewBest":"Новый рекорд очков!","rNewCrop":"Открыты новые семена: {c}","rFailTime":"Время вышло раньше, чем были достигнуты все цели.","rFailMoves":"Действия закончились.","rFailPure":"Растение увяло.","labTitle":"Лаборатория теплицы","labSub":"Тратьте эссенцию на постоянные исследования. Каждая ветвь меняет стиль игры.","uBuy":"Исследовать","uOwned":"Активно","uLocked":"Нужен узел выше","uNoEssence":"Недостаточно эссенции","uDone":"Исследование завершено","branches":["Рост","Богатство","Мастерство"],"chapters":["Терраса ростков","Янтарные поля","Туманное нагорье","Теплица Авроры"],"chapterSub":["Освойте ритм земли и солнца.","Шире грядки, богаче рынки.","Суровая погода, жёстче цели.","Последнее зимнее цветение."],"upg":["Орошение","Глубокие корни","Стеклянный дом","Автоуход","Фора","Связи на рынке","Торговец семенами","Золотое касание","Заначка","Удача","Быстрые руки","Мастер серий","Каменотёс","Чутьё на погоду"],"upgD":["Все растения растут на 14% быстрее.","Скорость роста повышается ещё на 16%.","Созревшие растения вянут на 55% медленнее.","Одна растущая грядка получает уход каждые 7 секунд.","Каждое семя начинает с 18% роста.","Каждый сбор продаётся на 12% дороже.","Семена стоят на 22% дешевле.","Каждый шаг серии добавляет 6% к цене продажи.","Каждый уровень начинается с 70 монет в запасе.","Каждый 8-й сбор за уровень приносит вдвое больше.","Уход продвигает рост на 55% дальше.","Окно серии держится на 1,1 с дольше.","Уборка камня стоит на 60% дешевле.","Бонусы погоды и сезона на 50% сильнее."],"crops":["Мятный росток","Росистый папоротник","Тлеющая ягода","Коралловая водоросль","Дождевая орхидея","Солнечный тюльпан","Бархатный мох","Звёздный цветок","Янтарная пшеница","Лунная лилия","Призрачный мак","Громовая лоза","Морозный колокольчик","Золотая роза","Призматический кактус","Подсолнух Нова","Хрустальный плющ","Лотос сердца"],"fx":["Растёт ровно и надёжно.","Уход продвигает рост вдвое дальше.","+30% цены при Золотом солнце или Мареве.","Держит окно серии открытым на 1,6 с дольше.","Растёт на 60% быстрее в Дождь или Туман.","Самый быстрый цветок за свои деньги.","Следующее семя обойдётся на 40% дешевле.","Считается за два сбора для целей.","+40% цены при Полярной вуали или Тумане.","Выплата колеблется от x0,5 до x2,2.","При сборе даёт соседям +25% роста.","Никогда не вянет, сколько ни ждите.","+12% цены за каждый шаг серии.","Игнорирует любые погодные штрафы.","Нужно два ухода, зато платит щедро.","Стоит на +9 больше за каждый сбор на уровне.","Возвращает 6 секунд на таймер."],"wx":["Золотое солнце","Серебряный туман","Лёгкий ветерок","Мягкий дождь","Знойное марево","Полярная вуаль"],"sea":["Весна","Лето","Осень","Зима"],"tutT":["Посев","Уход","Серия","Цели"],"tutB":["Выберите семена на нижней панели и нажмите пустую грядку, чтобы посадить их. Каждое семя стоит монет и зреет в своём темпе.","Нажмите растение, которое ещё растёт, чтобы поухаживать за ним — рост скачком уйдёт вперёд. У каждой грядки короткая перезарядка.","Сияющие растения созрели. Собирайте их одно за другим без пауз, чтобы набрать серию, умножающую каждую продажу.","Цели уровня показаны сверху. Выполните их все в пределах лимита времени или действий, чтобы получить до трёх звёзд."],"tutSkip":"Пропустить","tutNext":"Далее","tutDone":"Начать выращивать","cost":"Цена","sec":" с","newTag":"НОВОЕ","soundOn":"Звук: вкл.","soundOff":"Звук: выкл."},"de":{"name":"DE","title":"Blütenkreis","kicker":"24 Stufen · 18 Samen · 14 Forschungen","tagline":"Lass einen lebendigen Garten durch vier Jahreszeiten wachsen. Verkette Ernten, lies das Wetter und beherrsche jedes Beet.","play":"Spielen","cont":"Fortsetzen","map":"Gartenkarte","retry":"Nochmal","next":"Nächste Stufe","resume":"Weiter","restart":"Stufe neu starten","quitStage":"Stufe verlassen","back":"Zurück","upgrades":"Gewächshauslabor","howTo":"So wird gespielt","ariaGame":"Gartenspielfeld von Blütenkreis","ariaSound":"Ton ein- oder ausschalten","ariaPause":"Spiel pausieren","ariaBack":"Zurück","stageSelect":"Gartenkarte","stageSub":"Wähle eine Stufe. Wer sie schafft, öffnet die nächste und schaltet neue Samen frei.","stageWord":"Stufe","locked":"Gesperrt","unlockAt":"Schaffe zuerst Stufe {n}","totalStars":"Sterne","essence":"Essenz","stagesLbl":"Geschafft","gCoin":"{n} Münzen gleichzeitig halten","gEarn":"Insgesamt {n} Münzen verdienen","gHarv":"{n} Pflanzen ernten","gCrop":"{n} x {c} ernten","gChain":"Eine Kette von {n} erreichen","gPure":"Keine Pflanze verwelken lassen","gVary":"{n} verschiedene Arten ernten","gFull":"Alle Beete gleichzeitig füllen, {n}-mal","limTime":"{n} s","limMoves":"{n} Aktionen","movesLeft":"Aktionen","hCoins":"Münzen","hTime":"Zeit","hWeather":"Wetter","hCombo":"KETTE","sGrow":"Wachstum","sValue":"Wert","noCoins":"Nicht genug Münzen","withered":"Eine Pflanze ist verwelkt","ripe":"REIF","tend":"PFLEGEN","goalDone":"Ziel erreicht!","allDone":"Alle Ziele erreicht!","paused":"Pausiert","pausedKick":"Kurz durchatmen","resumeHint":"Dein Garten wartet genau dort, wo du aufgehört hast.","hintPlant":"Wähle unten einen Samen und tippe auf ein leeres Beet","hintTend":"Tippe eine wachsende Pflanze an, um sie zu pflegen","hintHarvest":"Funkelnde Pflanzen sind reif — antippen zum Ernten","stoneMsg":"Stein geräumt","stoneNeed":"Diesen Stein zu räumen kostet {n} Münzen","rWin":"Stufe geschafft!","rLose":"Stufe gescheitert","rKicker":"Marktbericht","rScore":"Punkte","rCoins":"Verdiente Münzen","rHarv":"Ernten","rCombo":"Beste Kette","rTime":"Restzeit","rStars":"Sterne","rEssence":"Erhaltene Essenz","rNewBest":"Neue Bestpunktzahl!","rNewCrop":"Neuer Samen freigeschaltet: {c}","rFailTime":"Die Zeit lief ab, bevor alle Ziele erfüllt waren.","rFailMoves":"Dir sind die Aktionen ausgegangen.","rFailPure":"Eine Pflanze ist verwelkt.","labTitle":"Gewächshauslabor","labSub":"Gib Essenz für dauerhafte Forschung aus. Jeder Zweig verändert deine Spielweise.","uBuy":"Erforschen","uOwned":"Aktiv","uLocked":"Benötigt den vorherigen Knoten","uNoEssence":"Nicht genug Essenz","uDone":"Forschung abgeschlossen","branches":["Wachstum","Wohlstand","Handwerk"],"chapters":["Keimlingsterrasse","Bernsteinfelder","Nebelhochland","Aurora-Gewächshaus"],"chapterSub":["Lerne den Rhythmus von Erde und Sonne.","Breitere Beete, reichere Märkte.","Raues Wetter, härtere Ziele.","Eine letzte Winterblüte."],"upg":["Bewässerung","Tiefe Wurzeln","Glashaus","Pflegeautomat","Vorsprung","Marktkontakte","Samenhändler","Goldene Hand","Notgroschen","Glücksfall","Flinke Hände","Kettenmeister","Steinbrecher","Wettergespür"],"upgD":["Alle Pflanzen wachsen 14% schneller.","Die Wachstumsgeschwindigkeit steigt um weitere 16%.","Reife Pflanzen verwelken 55% langsamer.","Alle 7 Sekunden wird ein wachsendes Beet für dich gepflegt.","Jeder gesäte Samen startet mit 18% Wachstum.","Jede Ernte verkauft sich 12% teurer.","Samen kosten 22% weniger.","Jede Kettenstufe schlägt 6% auf den Verkaufspreis auf.","Beginne jede Stufe mit 70 zusätzlichen Münzen.","Jede 8. Ernte eines Laufs zahlt doppelt.","Pflegen treibt das Wachstum 55% weiter.","Das Kettenfenster bleibt 1,1 s länger offen.","Einen Stein zu räumen kostet 60% weniger.","Wetter- und Jahreszeitenboni sind 50% stärker."],"crops":["Minzspross","Taufarn","Glutbeere","Korallentang","Regenorchidee","Sonnentulpe","Samtmoos","Sternblüte","Bernsteinweizen","Mondlilie","Geistermohn","Donnerranke","Frostglocke","Goldene Rose","Prismenkaktus","Nova-Sonnenblume","Kristall-Efeu","Herzlotus"],"fx":["Beständig und verlässlich.","Pflege bringt sie doppelt so weit.","+30% Wert bei Goldener Sonne oder Hitzeflimmern.","Hält das Kettenfenster 1,6 s länger offen.","Wächst 60% schneller bei Regen oder Nebel.","Die schnellste Blüte ihrer Preisklasse.","Der nächste Samen kostet 40% weniger.","Zählt für Ziele als zwei Ernten.","+40% Wert bei Aurora oder Nebel.","Der Ertrag schwankt zwischen x0,5 und x2,2.","Beim Ernten gibt sie Nachbarn +25% Wachstum.","Verwelkt nie, egal wie lange sie wartet.","+12% Wert für jede Stufe der Kette.","Ignoriert jede Wetterstrafe.","Braucht zweimal Pflege, zahlt dann groß.","Ist pro Ernte dieses Laufs +9 mehr wert.","Gibt 6 Sekunden auf die Uhr zurück."],"wx":["Goldene Sonne","Silberner Nebel","Sanfte Brise","Leichter Regen","Hitzeflimmern","Aurora-Schleier"],"sea":["Frühling","Sommer","Herbst","Winter"],"tutT":["Säen","Pflegen","Verketten","Ziele"],"tutB":["Wähle unten in der Leiste einen Samen und tippe dann auf ein leeres Beet, um ihn zu säen. Jeder Samen kostet Münzen und reift im eigenen Tempo.","Tippe eine noch wachsende Pflanze an, um sie zu pflegen — ihr Wachstum springt sofort nach vorn. Jedes Beet hat eine kurze Abklingzeit.","Funkelnde Pflanzen sind reif. Ernte sie ohne Pause nacheinander, um eine Kette aufzubauen, die jeden Verkauf vervielfacht.","Jede Stufe zeigt ihre Ziele oben an. Erfülle alle innerhalb des Zeit- oder Aktionslimits und verdiene bis zu drei Sterne."],"tutSkip":"Überspringen","tutNext":"Weiter","tutDone":"Los geht's!","cost":"Kosten","sec":" s","newTag":"NEU","soundOn":"Ton: an","soundOff":"Ton: aus"},"ja":{"name":"JP","title":"ブルーム・サーキット","kicker":"24ステージ · 18の種 · 14の研究","tagline":"四季をめぐる生きた庭を育てましょう。収穫を連鎖させ、天候を読み、すべての畑を思いのままに。","play":"プレイ","cont":"つづきから","map":"ガーデンマップ","retry":"もう一度","next":"次のステージ","resume":"再開","restart":"ステージをやり直す","quitStage":"ステージをやめる","back":"もどる","upgrades":"温室ラボ","howTo":"あそびかた","ariaGame":"ブルーム・サーキットのガーデンボード","ariaSound":"サウンドの切り替え","ariaPause":"ゲームを一時停止","ariaBack":"もどる","stageSelect":"ガーデンマップ","stageSub":"ステージを選びましょう。ステージをクリアすると次が開き、新しい種も解放されます。","stageWord":"ステージ","locked":"ロック中","unlockAt":"先にステージ{n}をクリア","totalStars":"スター","essence":"エッセンス","stagesLbl":"クリア","gCoin":"コインを同時に{n}枚持つ","gEarn":"コインを合計{n}枚稼ぐ","gHarv":"作物を{n}個収穫する","gCrop":"{c}を{n}個収穫する","gChain":"{n}連鎖を達成する","gPure":"作物を1つも枯らさない","gVary":"異なる作物を{n}種類収穫する","gFull":"すべての畑を同時に埋める（{n}回）","limTime":"{n}秒","limMoves":"{n}手","movesLeft":"手数","hCoins":"コイン","hTime":"時間","hWeather":"天候","hCombo":"連鎖","sGrow":"成長","sValue":"価値","noCoins":"コインが足りません","withered":"作物が枯れました","ripe":"完熟","tend":"手入れ","goalDone":"目標達成！","allDone":"すべての目標を達成！","paused":"一時停止","pausedKick":"ひと休み","resumeHint":"庭は中断したときのまま待っています。","hintPlant":"下から種を選び、空いた畑をタップ","hintTend":"育っている作物をタップして手入れ","hintHarvest":"きらめく作物が完熟です — タップで収穫","stoneMsg":"石をどけました","stoneNeed":"この石をどけるにはコイン{n}枚が必要です","rWin":"ステージクリア！","rLose":"ステージ失敗","rKicker":"マーケットレポート","rScore":"スコア","rCoins":"獲得コイン","rHarv":"収穫回数","rCombo":"最大連鎖","rTime":"残り時間","rStars":"スター","rEssence":"獲得エッセンス","rNewBest":"自己ベスト更新！","rNewCrop":"新しい種を解放：{c}","rFailTime":"目標を満たす前に時間切れになりました。","rFailMoves":"手数を使い切りました。","rFailPure":"作物が枯れてしまいました。","labTitle":"温室ラボ","labSub":"エッセンスを使って永続的な研究を進めましょう。系統ごとに庭づくりが変わります。","uBuy":"研究する","uOwned":"適用中","uLocked":"上のノードが必要","uNoEssence":"エッセンスが足りません","uDone":"研究完了","branches":["成長","富","技術"],"chapters":["双葉のテラス","琥珀の畑","霧の高原","オーロラ温室"],"chapterSub":["土と陽射しのリズムを覚えましょう。","広い畑、豊かな市場。","厳しい天候、高い目標。","冬に咲く、最後の花。"],"upg":["灌漑","深い根","ガラス温室","自動手入れ","先行発芽","市場人脈","種商人","黄金の手","元手","臨時収入","早業","連鎖の達人","つるはし","天候読み"],"upgD":["すべての作物が14%速く育ちます。","成長速度がさらに16%上がります。","完熟した作物の枯れる速度が55%遅くなります。","7秒ごとに育成中の作物を1つ自動で手入れします。","まいた種が成長度18%から始まります。","収穫の売値が12%上がります。","種の値段が22%安くなります。","連鎖1段ごとに売値が6%上がります。","ステージ開始時にコインを70枚多く持てます。","1プレイ中、8回ごとの収穫で売値が倍になります。","手入れの成長量が55%大きくなります。","連鎖の持続時間が1.1秒のびます。","石をどける費用が60%安くなります。","天候と季節のボーナスが50%強くなります。"],"crops":["ミントの芽","露のシダ","残り火ベリー","サンゴ藻","雨のラン","陽のチューリップ","ビロード苔","星の花","琥珀の麦","月のユリ","幽霊ケシ","雷のつる","霜の鈴","黄金のバラ","プリズムサボテン","ノヴァヒマワリ","水晶のツタ","こころの蓮"],"fx":["安定していて頼れます。","手入れすると成長が2倍進みます。","黄金の陽射しと陽炎で価値が30%上がります。","連鎖の持続を1.6秒のばします。","小雨と銀の霧で60%速く育ちます。","同じ価格帯で最速の開花です。","次にまく種が40%安くなります。","目標の集計で収穫2回分になります。","オーロラのとばりと銀の霧で価値が40%上がります。","報酬がx0.5からx2.2の間で変動します。","収穫すると隣の作物の成長が25%進みます。","どれだけ待っても枯れません。","連鎖1段ごとに価値が12%上がります。","天候のペナルティをすべて無視します。","手入れ2回が必要ですが大きく稼げます。","このプレイの収穫1回ごとに価値が9上がります。","残り時間が6秒回復します。"],"wx":["黄金の陽射し","銀の霧","やさしい風","小雨","陽炎","オーロラのとばり"],"sea":["春","夏","秋","冬"],"tutT":["種をまく","手入れする","連鎖させる","目標を知る"],"tutB":["下のバーから種を選び、空いた畑をタップして植えます。種ごとに値段と実るまでの速さが違います。","まだ育っている作物をタップすると手入れでき、成長が一気に進みます。畑ごとに短い待ち時間があります。","きらめく作物が完熟です。休まず次々に収穫すると連鎖ボーナスが積み上がり、売値が倍増します。","各ステージの目標は画面上部に並びます。時間か手数の制限内にすべて達成すると最大3つのスターがもらえます。"],"tutSkip":"スキップ","tutNext":"次へ","tutDone":"はじめる","cost":"費用","sec":"秒","newTag":"NEW","soundOn":"サウンド：オン","soundOff":"サウンド：オフ"},"tr":{"name":"TR","title":"Çiçek Devresi","kicker":"24 bölüm · 18 tohum · 14 araştırma","tagline":"Dört mevsim boyunca yaşayan bir bahçe yetiştir. Hasatları zincirle, havayı oku ve her tarlayı avucuna al.","play":"Oyna","cont":"Devam et","map":"Bahçe haritası","retry":"Tekrar dene","next":"Sonraki bölüm","resume":"Sürdür","restart":"Bölümü yeniden başlat","quitStage":"Bölümden çık","back":"Geri","upgrades":"Sera Laboratuvarı","howTo":"Nasıl oynanır","ariaGame":"Çiçek Devresi bahçe tahtası","ariaSound":"Sesi aç veya kapat","ariaPause":"Oyunu duraklat","ariaBack":"Geri","stageSelect":"Bahçe haritası","stageSub":"Bir bölüm seç. Bir bölümü geçmek sonrakini ve yeni tohumları açar.","stageWord":"Bölüm","locked":"Kilitli","unlockAt":"Önce {n}. bölümü geç","totalStars":"Yıldız","essence":"Öz","stagesLbl":"Geçilen","gCoin":"Aynı anda {n} jeton bulundur","gEarn":"Toplam {n} jeton kazan","gHarv":"{n} ürün hasat et","gCrop":"{n} x {c} hasat et","gChain":"{n} zincirine ulaş","gPure":"Hiçbir ürünü soldurma","gVary":"{n} farklı tür hasat et","gFull":"Tüm tarlaları aynı anda doldur, {n} kez","limTime":"{n} sn","limMoves":"{n} hamle","movesLeft":"Hamle","hCoins":"Jeton","hTime":"Süre","hWeather":"Hava","hCombo":"ZİNCİR","sGrow":"Büyüme","sValue":"Değer","noCoins":"Yeterli jeton yok","withered":"Bir ürün soldu","ripe":"OLGUN","tend":"BAKIM","goalDone":"Hedef tamam!","allDone":"Tüm hedefler tamam!","paused":"Duraklatıldı","pausedKick":"Biraz soluklan","resumeHint":"Bahçen tam bıraktığın yerde seni bekliyor.","hintPlant":"Aşağıdan bir tohum seç, sonra boş bir tarlaya dokun","hintTend":"Büyümekte olan bir ürüne dokunarak bakım yap","hintHarvest":"Parlayan ürünler olgundur — hasat için dokun","stoneMsg":"Taş kaldırıldı","stoneNeed":"Bu taşı kaldırmak {n} jetona mal olur","rWin":"Bölüm tamam!","rLose":"Bölüm başarısız","rKicker":"Pazar raporu","rScore":"Puan","rCoins":"Kazanılan jeton","rHarv":"Hasat","rCombo":"En iyi zincir","rTime":"Kalan süre","rStars":"Yıldız","rEssence":"Kazanılan öz","rNewBest":"Yeni rekor puan!","rNewCrop":"Yeni tohum açıldı: {c}","rFailTime":"Tüm hedefler tamamlanmadan süre doldu.","rFailMoves":"Hamlelerin bitti.","rFailPure":"Bir ürün soldu.","labTitle":"Sera Laboratuvarı","labSub":"Kalıcı araştırmalara Öz harca. Her dal bahçeciliğini değiştirir.","uBuy":"Araştır","uOwned":"Etkin","uLocked":"Üstteki araştırma gerekir","uNoEssence":"Yeterli Öz yok","uDone":"Araştırma tamamlandı","branches":["Büyüme","Servet","Beceri"],"chapters":["Fide Terası","Kehribar Tarlaları","Sisli Yaylalar","Aurora Serası"],"chapterSub":["Toprağın ve güneşin ritmini öğren.","Daha geniş tarlalar, daha zengin pazarlar.","Sert hava, daha zor hedefler.","Son bir kış çiçeklenmesi."],"upg":["Sulama","Derin kökler","Cam ev","Otomatik bakım","Erken başlangıç","Pazar bağlantıları","Tohum tüccarı","Altın dokunuş","Birikim","Bereket","Hızlı eller","Zincir ustası","Taş kesici","Hava sezgisi"],"upgD":["Tüm ürünler %14 daha hızlı büyür.","Büyüme hızı %16 daha artar.","Olgun ürünler %55 daha yavaş solar.","Her 7 saniyede bir, büyüyen bir tarlaya senin yerine bakım yapılır.","Ektiğin her tohum %18 büyümeyle başlar.","Her hasat %12 daha pahalıya satılır.","Tohumlar %22 daha ucuz olur.","Her zincir adımı satış fiyatına %6 ekler.","Her bölüme fazladan 70 jetonla başla.","Bir turdaki her 8. hasat iki kat kazandırır.","Bakım büyümeyi %55 daha ileri taşır.","Zincir penceresi 1,1 sn daha açık kalır.","Bir taşı kaldırmak %60 daha ucuz olur.","Hava ve mevsim bonusları %50 daha güçlü olur."],"crops":["Nane filizi","Çiy eğreltisi","Kor meyvesi","Mercan yosunu","Yağmur orkidesi","Güneş lalesi","Kadife yosun","Yıldız çiçeği","Kehribar buğday","Ay zambağı","Hayalet gelincik","Şimşek asması","Kırağı çanı","Yaldızlı gül","Prizma kaktüs","Nova ayçiçeği","Kristal sarmaşık","Kalp nilüferi"],"fx":["İstikrarlı ve güvenilir.","Bakım onu iki kat ileri taşır.","Altın Güneş veya Sıcak Serapta +%30 değer.","Zincir penceresini 1,6 sn daha açık tutar.","Yağmur veya Siste %60 daha hızlı büyür.","Fiyat sınıfının en hızlı açan çiçeği.","Ektiğin sonraki tohum %40 daha ucuz olur.","Hedeflerde iki hasat sayılır.","Aurora veya Siste +%40 değer.","Getirisi x0,5 ile x2,2 arasında değişir.","Hasat edilince komşulara +%25 büyüme verir.","Ne kadar beklerse beklesin asla solmaz.","Zincirin her adımı için +%12 değer.","Tüm hava cezalarını yok sayar.","İki bakım ister, sonra çok kazandırır.","Bu turdaki her hasat için +9 daha değerli.","Sayaca 6 saniye geri verir."],"wx":["Altın güneş","Gümüş sis","Tatlı esinti","Hafif yağmur","Sıcak serap","Aurora perdesi"],"sea":["İlkbahar","Yaz","Sonbahar","Kış"],"tutT":["Tohum ek","Bakım yap","Zincirle","Hedefleri oku"],"tutB":["Alttaki çubuktan bir tohum seç, sonra ekmek için boş bir tarlaya dokun. Her tohumun bedeli ve olgunlaşma hızı farklıdır.","Hâlâ büyüyen bir ürüne dokunarak bakım yap — büyümesi anında ileri sıçrar. Her tarlanın kısa bir bekleme süresi vardır.","Parlayan ürünler olgundur. Ara vermeden peş peşe hasat ederek her satışı katlayan bir zincir bonusu kur.","Her bölüm hedeflerini üstte listeler. Süre veya hamle sınırı içinde hepsini tamamlayarak üç yıldıza kadar kazan."],"tutSkip":"Atla","tutNext":"İleri","tutDone":"Yetiştirmeye başla","cost":"Fiyat","sec":" sn","newTag":"YENİ","soundOn":"Ses: açık","soundOff":"Ses: kapalı"}};
+const LANG_ORDER=["en","es","fr","pt","ru","de","ja","tr","ko"];
+let curLang="en";
+function t(k){const L=I18N[curLang]||I18N.en;const v=L[k];return v!==undefined?v:I18N.en[k]}
+function fmt(s,o){return String(s).replace(/\{(\w+)\}/g,(m,k)=>o&&o[k]!==undefined?o[k]:m)}
+
+/* ------------------------------------------------------------- storage -- */
+const SKEY="bloomCircuitSave3";
+const defaultSave=()=>({v:3,lang:null,sound:true,essence:0,stars:{},best:{},upg:{},tut:false,seen:{}});
+let save=defaultSave();
+function loadSave(){
+  try{const raw=localStorage.getItem(SKEY);if(raw){const o=JSON.parse(raw);if(o&&typeof o==="object")save=Object.assign(defaultSave(),o)}}catch(_){}
+  if(!save.stars)save.stars={};if(!save.best)save.best={};if(!save.upg)save.upg={};if(!save.seen)save.seen={};
+}
+function writeSave(){try{localStorage.setItem(SKEY,JSON.stringify(save))}catch(_){}}
+
+/* ---------------------------------------------------------------- data -- */
+/* Crops: cost, grow seconds, base value, fx index, palette, shape params.
+   sh = {p:petal count, ps:petal shape 0-3, pl:petal length, pw:petal width,
+         leaf:0-3, ctr:0-3, stem:0-2, h:stem height, tilt} */
+const CROPS=[
+ {cost:8,  grow:3.4, val:20,  fx:0,  unlock:1,  a:"#7ef0b4",b:"#d8ffe9",c:"#ffe9a8", sh:{p:5, ps:0,pl:.30,pw:.13,leaf:0,ctr:0,stem:0,h:.36}},
+ {cost:13, grow:4.4, val:32,  fx:1,  unlock:1,  a:"#5fd6b6",b:"#a9f6e2",c:"#e6fff4", sh:{p:0, ps:0,pl:.00,pw:.00,leaf:2,ctr:3,stem:1,h:.42}},
+ {cost:19, grow:5.6, val:54,  fx:2,  unlock:2,  a:"#ff7a5c",b:"#ffb992",c:"#ff4d4d", sh:{p:6, ps:2,pl:.26,pw:.14,leaf:1,ctr:0,stem:0,h:.34}},
+ {cost:22, grow:4.0, val:44,  fx:3,  unlock:3,  a:"#ff9ec4",b:"#ffd2e6",c:"#fff0a8", sh:{p:3, ps:1,pl:.34,pw:.11,leaf:2,ctr:1,stem:2,h:.40}},
+ {cost:27, grow:6.4, val:68,  fx:4,  unlock:3,  a:"#8ab8ff",b:"#c8dcff",c:"#fff2c0", sh:{p:5, ps:1,pl:.32,pw:.15,leaf:1,ctr:2,stem:1,h:.38}},
+ {cost:30, grow:4.8, val:60,  fx:5,  unlock:4,  a:"#ffc861",b:"#ffe6ae",c:"#ff8f3d", sh:{p:8, ps:0,pl:.28,pw:.10,leaf:0,ctr:0,stem:0,h:.42}},
+ {cost:17, grow:5.2, val:36,  fx:6,  unlock:5,  a:"#a58bff",b:"#d6c9ff",c:"#7de6c0", sh:{p:4, ps:2,pl:.20,pw:.17,leaf:3,ctr:3,stem:2,h:.24}},
+ {cost:36, grow:7.6, val:100, fx:0,  unlock:5,  a:"#caa7ff",b:"#f0e2ff",c:"#ffe58a", sh:{p:6, ps:3,pl:.36,pw:.12,leaf:1,ctr:2,stem:1,h:.40}},
+ {cost:32, grow:6.8, val:70,  fx:7,  unlock:6,  a:"#e8c168",b:"#f7e0a4",c:"#c9903a", sh:{p:0, ps:0,pl:.00,pw:.00,leaf:1,ctr:3,stem:0,h:.50}},
+ {cost:44, grow:8.6, val:118, fx:8,  unlock:7,  a:"#b7d6ff",b:"#eaf3ff",c:"#d9b6ff", sh:{p:7, ps:1,pl:.34,pw:.13,leaf:2,ctr:1,stem:1,h:.40}},
+ {cost:40, grow:6.2, val:96,  fx:9,  unlock:8,  a:"#d3c8ff",b:"#f3efff",c:"#9de8ff", sh:{p:4, ps:1,pl:.34,pw:.18,leaf:0,ctr:1,stem:2,h:.36}},
+ {cost:52, grow:7.4, val:128, fx:10, unlock:9,  a:"#ffe066",b:"#fff5c2",c:"#8ae6ff", sh:{p:5, ps:3,pl:.32,pw:.16,leaf:2,ctr:2,stem:2,h:.38}},
+ {cost:48, grow:9.4, val:126, fx:11, unlock:10, a:"#a9e8ff",b:"#e2f8ff",c:"#ffffff", sh:{p:6, ps:1,pl:.30,pw:.14,leaf:1,ctr:0,stem:1,h:.36}},
+ {cost:66, grow:10.6,val:186, fx:12, unlock:12, a:"#ffb84d",b:"#ffdf9e",c:"#ff6f91", sh:{p:12,ps:0,pl:.26,pw:.09,leaf:1,ctr:0,stem:0,h:.36}},
+ {cost:74, grow:13.0,val:232, fx:13, unlock:13, a:"#6ee7c8",b:"#c4fff0",c:"#ff9ad5", sh:{p:4, ps:3,pl:.22,pw:.20,leaf:3,ctr:2,stem:2,h:.28}},
+ {cost:86, grow:11.6,val:262, fx:14, unlock:15, a:"#ffcf3f",b:"#fff0a8",c:"#7a4b18", sh:{p:14,ps:2,pl:.30,pw:.09,leaf:1,ctr:0,stem:0,h:.46}},
+ {cost:96, grow:13.6,val:308, fx:15, unlock:16, a:"#9df0ff",b:"#e6fdff",c:"#c9a7ff", sh:{p:6, ps:2,pl:.34,pw:.11,leaf:2,ctr:2,stem:1,h:.42}},
+ {cost:118,grow:15.0,val:392, fx:16, unlock:18, a:"#ff8fb1",b:"#ffd3e0",c:"#ffe08a", sh:{p:10,ps:1,pl:.34,pw:.13,leaf:3,ctr:1,stem:1,h:.30}}
+];
+/* Weather: g growth mult, v value mult, w wither speed mult */
+const WX=[
+ {g:1.15,v:1.00,w:1.00},
+ {g:0.92,v:1.22,w:0.78},
+ {g:1.06,v:1.06,w:1.00},
+ {g:1.28,v:0.92,w:0.52},
+ {g:1.38,v:1.00,w:1.85},
+ {g:0.88,v:1.45,w:0.90}
+];
+/* Season: g growth mult, v value mult */
+const SEA=[{g:1.05,v:1.00},{g:1.12,v:0.96},{g:0.96,v:1.12},{g:0.88,v:1.26}];
+
+/* Upgrade nodes: br branch, req prerequisite index, cost essence, order in column */
+const UPG=[
+ {br:0,req:-1,cost:25},{br:0,req:0,cost:60},{br:0,req:1,cost:100},{br:0,req:0,cost:55},{br:0,req:3,cost:110},
+ {br:1,req:-1,cost:25},{br:1,req:5,cost:60},{br:1,req:6,cost:105},{br:1,req:5,cost:70},{br:1,req:8,cost:120},
+ {br:2,req:-1,cost:30},{br:2,req:10,cost:70},{br:2,req:10,cost:55},{br:2,req:11,cost:125}
+];
+const BRANCH_ORDER=[[0,1,2,3,4],[5,6,7,8,9],[10,11,12,13]];
+const U=i=>!!save.upg[i];
+
+/* Goal types: coin earn harv crop chain pure vary full  (8 kinds) */
+const STAGES=[
+ {id:1, ch:0,grid:3,sea:0,wx:[0,2],      time:95, coin:120,goals:[["harv",5]],                 s2:390,s3:630},
+ {id:2, ch:0,grid:3,sea:0,wx:[0,2,3],    time:95, coin:120,goals:[["coin",240]],               s2:460,s3:735},
+ {id:3, ch:0,grid:3,sea:0,wx:[2,3,1],    time:100,coin:130,goals:[["harv",12],["earn",320]],   s2:930,s3:1500},
+ {id:4, ch:0,grid:3,sea:0,wx:[0,2],      time:100,coin:150,goals:[["chain",4]],                s2:440,s3:700},
+ {id:5, ch:0,grid:3,sea:0,wx:[0,4],      time:92, coin:160,goals:[["crop",4,2]],               s2:450,s3:725},
+ {id:6, ch:0,grid:3,sea:0,wx:[1,3,2],    time:110,coin:170,goals:[["earn",540],["pure"]],      s2:700,s3:1130},
+ {id:7, ch:1,grid:4,sea:1,wx:[0,2,4],    time:110,coin:190,goals:[["earn",720]],               s2:820,s3:1320},
+ {id:8, ch:1,grid:4,sea:1,wx:[0,3,2],    time:110,coin:210,goals:[["vary",4]],                 s2:400,s3:650},
+ {id:9, ch:1,grid:4,sea:1,wx:[4,0],      moves:32,coin:230,goals:[["earn",640]],               s2:620,s3:990},
+ {id:10,ch:1,grid:4,sea:1,wx:[0,1,3],    time:115,coin:230,goals:[["crop",6,8],["harv",20]],   s2:1480,s3:2070},
+ {id:11,ch:1,grid:4,sea:1,wx:[2,3],      time:115,coin:280,goals:[["full",3]],                 s2:350,s3:520},
+ {id:12,ch:1,grid:4,sea:1,wx:[4,0,2],    time:120,coin:280,goals:[["earn",1250],["chain",7]],  s2:2450,s3:3430},
+ {id:13,ch:2,grid:5,sea:2,wx:[1,3,5],    time:120,coin:300,goals:[["harv",30]],                s2:6120,s3:8550},
+ {id:14,ch:2,grid:5,sea:2,wx:[1,2],      moves:44,coin:340,goals:[["earn",1300]],              s2:1030,s3:1440},
+ {id:15,ch:2,grid:5,sea:2,wx:[5,1],      time:125,coin:340,goals:[["crop",5,12],["pure"]],     s2:1050,s3:1470},
+ {id:16,ch:2,grid:5,sea:2,wx:[4,1,3],    time:125,coin:360,stones:4,goals:[["earn",1850]],     s2:1740,s3:2440},
+ {id:17,ch:2,grid:5,sea:2,wx:[2,0,1],    time:125,coin:360,goals:[["chain",10]],               s2:5440,s3:7600},
+ {id:18,ch:2,grid:5,sea:2,wx:[1,5,3],    time:130,coin:380,goals:[["vary",6],["earn",1950]],   s2:1940,s3:2710},
+ {id:19,ch:3,grid:5,sea:3,wx:[5,1,4],    time:130,coin:420,stones:5,goals:[["earn",2450]],     s2:2140,s3:2990},
+ {id:20,ch:3,grid:5,sea:3,wx:[5,3],      moves:42,coin:440,goals:[["crop",4,16]],              s2:1660,s3:2320},
+ {id:21,ch:3,grid:5,sea:3,wx:[1,5,2],    time:135,coin:460,goals:[["full",3],["earn",2250]],   s2:2590,s3:3610},
+ {id:22,ch:3,grid:5,sea:3,wx:[4,5,1],    time:135,coin:480,stones:6,goals:[["harv",45],["pure"]],s2:23350,s3:32630},
+ {id:23,ch:3,grid:5,sea:3,wx:[5,0,1],    time:140,coin:500,goals:[["chain",13],["earn",2850]], s2:9080,s3:12690},
+ {id:24,ch:3,grid:5,sea:3,wx:[4,5,1,3],  moves:58,coin:580,stones:4,goals:[["earn",3100],["vary",8]],s2:2620,s3:3650}
+];
+const stageById=id=>STAGES[id-1];
+const maxUnlocked=()=>{let n=1;for(let i=1;i<=STAGES.length;i++){if(save.stars[i]>0)n=Math.min(STAGES.length,i+1)}return n};
+const totalStars=()=>{let s=0;for(const k in save.stars)s+=save.stars[k]||0;return s};
+const clearedCount=()=>{let s=0;for(const k in save.stars)if(save.stars[k]>0)s++;return s};
+
+/* --------------------------------------------------------------- audio -- */
+let actx=null;
+function ac(){ if(!save.sound) return null;
+  try{ if(!actx) actx=new (window.AudioContext||window.webkitAudioContext)();
+       if(actx.state==="suspended") actx.resume(); return actx; }catch(_){ return null } }
+function tone(f=440,dur=.09,type="sine",vol=.04,slide=0){
+  const a=ac();if(!a)return;
+  try{const o=a.createOscillator(),g=a.createGain();o.type=type;o.frequency.setValueAtTime(f,a.currentTime);
+    if(slide)o.frequency.exponentialRampToValueAtTime(Math.max(40,f+slide),a.currentTime+dur);
+    g.gain.setValueAtTime(0.0001,a.currentTime);g.gain.exponentialRampToValueAtTime(vol,a.currentTime+.008);
+    g.gain.exponentialRampToValueAtTime(.0001,a.currentTime+dur);
+    o.connect(g).connect(a.destination);o.start();o.stop(a.currentTime+dur+.02)}catch(_){}
+}
+function noise(dur=.16,vol=.03,hp=900){
+  const a=ac();if(!a)return;
+  try{const n=Math.floor(a.sampleRate*dur),buf=a.createBuffer(1,n,a.sampleRate),d=buf.getChannelData(0);
+    for(let i=0;i<n;i++)d[i]=(Math.random()*2-1)*(1-i/n);
+    const s=a.createBufferSource();s.buffer=buf;const f=a.createBiquadFilter();f.type="highpass";f.frequency.value=hp;
+    const g=a.createGain();g.gain.value=vol;s.connect(f).connect(g).connect(a.destination);s.start()}catch(_){}
+}
+const SFX={
+  click:()=>tone(520,.05,"triangle",.028),
+  plant:()=>{tone(240,.09,"triangle",.035,60);noise(.1,.016,1400)},
+  tend:()=>tone(430,.06,"sine",.026,110),
+  ripe:i=>tone(660+i*22,.1,"sine",.03),
+  harvest:c=>{const b=470+Math.min(c,10)*44;tone(b,.09,"triangle",.042);setTimeout(()=>tone(b*1.5,.07,"sine",.026),42)},
+  bad:()=>tone(150,.11,"square",.026,-40),
+  wither:()=>{tone(190,.2,"sawtooth",.02,-70);noise(.2,.012,500)},
+  goal:()=>{[523,659,784].forEach((f,i)=>setTimeout(()=>tone(f,.13,"triangle",.04),i*80))},
+  win:()=>{[523,659,784,1046].forEach((f,i)=>setTimeout(()=>tone(f,.22,"triangle",.045),i*110))},
+  lose:()=>{[392,330,262].forEach((f,i)=>setTimeout(()=>tone(f,.26,"sine",.04),i*140))},
+  star:i=>tone(700+i*180,.18,"triangle",.045),
+  buy:()=>{tone(560,.09,"triangle",.038);setTimeout(()=>tone(840,.14,"sine",.032),70)},
+  stone:()=>{noise(.22,.03,320);tone(120,.16,"square",.022,-40)}
+};
+
+/* ----------------------------------------------------------- music (BGM) --
+   A slow synthesised garden bed: sustained pad + soft pluck + low root, run
+   through one lowpass and a single feedback delay. Everything is generated
+   here — there is no audio file anywhere in this build.
+   The key, timbre, tempo and colour follow the season, and the melody is
+   driven by a deterministic 1024-step sequence (~6 minutes at the slowest
+   tempo) so the bed never announces a loop point. Its bus gain (0.16) sits
+   well under the SFX peaks (0.026-0.045 each, straight to destination), so
+   the music stays a background. The same `save.sound` flag mutes both.      */
+const BGM_SEA=[
+  /* spring — bright D, major pentatonic, gentle plucks */
+  {root:146.83,lead:"triangle",cut:2600,step:.34,padV:.040,leadV:.150,bassV:.072,
+   scale:[0,2,4,7,9,12,14,16,19,21],prog:[[0,7,16],[9,16,21],[5,12,19],[7,14,23]]},
+  /* summer — open E mixolydian, warmer and a touch quicker */
+  {root:164.81,lead:"sine",cut:3200,step:.30,padV:.038,leadV:.158,bassV:.068,
+   scale:[0,2,4,7,9,12,14,16,19,21],prog:[[0,7,16],[5,12,21],[10,17,26],[7,14,23]]},
+  /* autumn — A minor pentatonic, darker filter, slower */
+  {root:110.00,lead:"triangle",cut:1900,step:.38,padV:.042,leadV:.145,bassV:.076,
+   scale:[0,3,5,7,10,12,15,17,19,22],prog:[[0,7,15],[10,17,24],[5,12,20],[7,14,22]]},
+  /* winter — D minor, very soft, slowest, sparse */
+  {root:146.83,lead:"sine",cut:1500,step:.44,padV:.043,leadV:.136,bassV:.072,
+   scale:[0,3,5,7,10,12,15,17,19,22],prog:[[0,7,15],[8,15,22],[3,10,19],[10,17,24]]}
+];
+const BGM_VOL=.047;
+let bgmOn=false,bgmTimer=0,bgmNext=0,bgmStep=0,bgmSea=-1,bgmKicked=false;
+let bgmMaster=null,bgmFilt=null,bgmDelay=null,bgmFb=null,bgmWet=null,bgmComp=null;
+function bgmHash(n,s){
+  let x=(Math.imul(n,2654435761)+Math.imul(s,40503))>>>0;
+  x^=x>>>15;x=Math.imul(x,2246822519);x^=x>>>13;return (x>>>0)/4294967296;
+}
+function bgmBuild(a){
+  if(bgmMaster)return true;
+  try{
+    bgmMaster=a.createGain();bgmMaster.gain.value=.0001;
+    bgmFilt=a.createBiquadFilter();bgmFilt.type="lowpass";bgmFilt.frequency.value=2400;bgmFilt.Q.value=.4;
+    bgmDelay=a.createDelay(1);bgmDelay.delayTime.value=.38;
+    bgmFb=a.createGain();bgmFb.gain.value=.26;
+    bgmWet=a.createGain();bgmWet.gain.value=.28;
+    /* pad + pluck + delay tail can line up and spike as loud as a UI blip;
+       this caps the crest so the bed stays audible without ever poking
+       through the effects bus */
+    bgmComp=a.createDynamicsCompressor();
+    try{
+      bgmComp.threshold.value=-27;bgmComp.knee.value=10;bgmComp.ratio.value=10;
+      bgmComp.attack.value=.002;bgmComp.release.value=.32;
+    }catch(_){}
+    bgmFilt.connect(bgmComp);
+    bgmFilt.connect(bgmDelay);bgmDelay.connect(bgmFb);bgmFb.connect(bgmDelay);
+    bgmDelay.connect(bgmWet);bgmWet.connect(bgmComp);
+    bgmComp.connect(bgmMaster);
+    bgmMaster.connect(a.destination);
+    return true;
+  }catch(_){bgmMaster=null;return false}
+}
+function bgmVoice(a,f,t0,dur,type,vol,atk){
+  try{
+    const o=a.createOscillator(),g=a.createGain();
+    o.type=type;o.frequency.setValueAtTime(f,t0);
+    g.gain.setValueAtTime(.0001,t0);
+    g.gain.exponentialRampToValueAtTime(vol,t0+atk);
+    g.gain.exponentialRampToValueAtTime(.0001,t0+dur);
+    o.connect(g).connect(bgmFilt);o.start(t0);o.stop(t0+dur+.05);
+  }catch(_){}
+}
+function bgmTick(a,C,t,st){
+  const sl=st&15,ch=C.prog[(st>>4)%C.prog.length],f=s=>C.root*Math.pow(2,s/12);
+  if(sl===0){
+    const d=C.step*16*1.02;
+    /* the pad voices enter one after another: three coherent attacks on the
+       same instant made the bed peak as loud as an SFX click */
+    for(let k=0;k<ch.length;k++)bgmVoice(a,f(ch[k]),t+k*.11,d-k*.11,"sine",C.padV,.9+k*.12);
+    bgmVoice(a,f(ch[0]-12),t,d*.55,"sine",C.bassV,.25);
+  }
+  /* one breathing bar in every eight keeps the bed from nagging */
+  const sparse=((st>>4)&7)===7;
+  if(sl%2===0&&bgmHash(st,1)<(sparse?.15:.44)){
+    const sc=C.scale,idx=(bgmHash(st,2)*sc.length)|0;
+    bgmVoice(a,f(sc[idx]+(bgmHash(st,3)<.34?24:12)),t,C.step*(2.2+bgmHash(st,4)*1.7),C.lead,C.leadV,.055);
+  }
+  if(sl===8&&bgmHash(st,5)<.12){
+    const sc=C.scale;
+    bgmVoice(a,f(sc[(bgmHash(st,6)*sc.length)|0]+36),t,C.step*3,"sine",C.leadV*.42,.09);
+  }
+}
+function bgmSchedule(){
+  const a=actx;
+  if(!a||!bgmOn||!bgmMaster||!save.sound||a.state!=="running")return;
+  const sea=stage?stage.sea:ambientSeason;
+  if(sea!==bgmSea){
+    bgmSea=sea;
+    try{bgmFilt.frequency.setTargetAtTime(BGM_SEA[sea].cut,a.currentTime,.7)}catch(_){}
+  }
+  const C=BGM_SEA[bgmSea];
+  if(bgmNext<a.currentTime)bgmNext=a.currentTime+.08;
+  let guard=0;
+  while(bgmNext<a.currentTime+.7&&guard++<24){
+    bgmTick(a,C,bgmNext,bgmStep);
+    bgmNext+=C.step;bgmStep=(bgmStep+1)&1023;
+  }
+}
+function bgmStart(){
+  if(!save.sound||bgmOn)return;
+  const a=ac();if(!a||!bgmBuild(a))return;
+  bgmOn=true;bgmNext=0;
+  try{
+    const now=a.currentTime;
+    bgmMaster.gain.cancelScheduledValues(now);
+    bgmMaster.gain.setValueAtTime(Math.max(.0001,bgmMaster.gain.value),now);
+    bgmMaster.gain.linearRampToValueAtTime(BGM_VOL,now+2.2);
+  }catch(_){}
+  if(!bgmTimer)bgmTimer=setInterval(bgmSchedule,140);
+  bgmSchedule();
+}
+function bgmStop(fade){
+  bgmOn=false;
+  if(bgmTimer){clearInterval(bgmTimer);bgmTimer=0}
+  if(bgmMaster&&actx){try{
+    const now=actx.currentTime;
+    bgmMaster.gain.cancelScheduledValues(now);
+    bgmMaster.gain.setValueAtTime(Math.max(.0001,bgmMaster.gain.value),now);
+    bgmMaster.gain.linearRampToValueAtTime(.0001,now+(fade||.35));
+  }catch(_){}}
+}
+/* autoplay policy: the bed only starts after the first real user input */
+function bgmKick(){
+  if(bgmKicked)return;bgmKicked=true;
+  removeEventListener("pointerdown",bgmKick,true);
+  removeEventListener("keydown",bgmKick,true);
+  removeEventListener("touchstart",bgmKick,true);
+  bgmStart();
+}
+addEventListener("pointerdown",bgmKick,true);
+addEventListener("keydown",bgmKick,true);
+addEventListener("touchstart",bgmKick,true);
+
+/* ------------------------------------------------------------ elements -- */
+const $=id=>document.getElementById(id);
+const canvas=$("game"),ctx=canvas.getContext("2d",{alpha:false});
+const view={w:0,h:0,dpr:1,board:0,x:0,y:0,cell:0,n:3,compact:false};
+
+/* ---------------------------------------------------------------- rng --- */
+let rngState=1;
+function srand(s){rngState=(s|0)||1}
+function rnd(){rngState|=0;rngState=(rngState+0x6d2b79f5)|0;let x=rngState;x=Math.imul(x^x>>>15,x|1);x^=x+Math.imul(x^x>>>7,x|61);return((x^x>>>14)>>>0)/4294967296}
+
+/* ------------------------------------------------------------- runtime -- */
+let screen="title";            /* title | map | lab | play | result | pause | tut */
+let stage=null;                /* current stage def */
+let plots=[];                  /* {seed,growth,ripe,tend,pulse,stone,tends} */
+let particles=[],floaters=[],rings=[];
+let coins=0,timeLeft=0,movesLeft=0,chain=0,chainClock=0,bestChain=0;
+let wxIdx=0,wxClock=0,wxOrder=[];
+let selected=0,focusPlot=0,running=false,finished=false,seedPickedByPlayer=false;
+let prog=null,newCropThisStage=-1,shake=0,dayT=0,autoTendClock=0,discountNext=false;
+let lastResult=null,tutStep=0,hintTimer=0;
+
+/* --------------------------------------------------------- upgrade fx --- */
+const growMul =()=> (U(0)?1.14:1)*(U(1)?1.16:1);
+const valMul  =()=> (U(5)?1.12:1);
+const seedCost=i=> Math.max(1,Math.round(CROPS[i].cost*(U(6)?0.78:1)*(discountNext?0.6:1)));
+const chainWin=()=> 2.3+(U(11)?1.1:0);
+const tendPow =()=> 0.145*(U(10)?1.55:1);
+const witherMul=()=>(U(2)?0.45:1);
+const stoneCost=()=> Math.round((70+view.n*22)*(U(12)?0.4:1));
+function wxAmp(v){ return U(13)? 1+(v-1)*1.5 : v }
+
+/* =========================================================== rendering == */
+function mix(a,b,n){
+  n=Math.max(0,Math.min(1,n));
+  const av=parseInt(a.slice(1),16),bv=parseInt(b.slice(1),16);
+  const r=Math.round((av>>16)*(1-n)+(bv>>16)*n),g=Math.round((av>>8&255)*(1-n)+(bv>>8&255)*n),c=Math.round((av&255)*(1-n)+(bv&255)*n);
+  return "#"+(1<<24|r<<16|g<<8|c).toString(16).slice(1);
+}
+/* season palettes: [midday, dusk] — index matches SEA / t("sea") */
+const SEASON_SKY=[
+ [{top:"#8fd0e8",mid:"#dff0c8",low:"#3f8a6c",hill:"#3f8f66",glow:"#fff3bd",fol:"#67c47a",blo:"#ffc0d8"},
+  {top:"#5a5f9e",mid:"#e59a86",low:"#2b5a52",hill:"#2c604b",glow:"#ffb774",fol:"#3f8f63",blo:"#ff9fc4"}],
+ [{top:"#3fa8dd",mid:"#ffe9a8",low:"#2f7a58",hill:"#2f8256",glow:"#fff4a0",fol:"#4fbc6a",blo:"#ffd36a"},
+  {top:"#3c4a8f",mid:"#ff9b6a",low:"#21514a",hill:"#245a43",glow:"#ffa25c",fol:"#2f8055",blo:"#ff9a6a"}],
+ [{top:"#7fb4c8",mid:"#f6c98a",low:"#6a5230",hill:"#7a5a33",glow:"#ffd79a",fol:"#c98b3f",blo:"#ff9a5c"},
+  {top:"#4a3a63",mid:"#d8794f",low:"#3c2f22",hill:"#472f22",glow:"#ff9a55",fol:"#a86a30",blo:"#ff7a4c"}],
+ [{top:"#9fc6e0",mid:"#e6f1f8",low:"#5d7a86",hill:"#65818c",glow:"#f4fbff",fol:"#7fa5a0",blo:"#cfe6ff"},
+  {top:"#2f3f6e",mid:"#7d8fc4",low:"#2b3a45",hill:"#33454f",glow:"#cfe0ff",fol:"#5b7d80",blo:"#a8c8ff"}]
+];
+
+let ambientSeason=0;
+function envPalette(){
+  const s=SEASON_SKY[stage?stage.sea:ambientSeason];
+  const k=Math.max(0,Math.min(1,dayT));
+  const p={};for(const key in s[0])p[key]=mix(s[0][key],s[1][key],k);
+  p.dusk=k;return p;
+}
+/* Upper-sky life: the top fifth of every screen used to be an empty wash with
+   a single blurred sun. Everything here is procedural, allocation-free per
+   frame (no gradients inside the loops) and swaps with the season:
+     spring  drifting clouds + birds + soft sun shafts
+     summer  clouds + strong shafts + fireflies
+     autumn  tinted clouds + a migrating flock + embers
+     winter  pale clouds + thin cirrus streaks                              */
+function drawSkyDecor(w,h,tm,p,sea,sx,sy){
+  const cp=view.compact;
+  /* --- clouds --- */
+  const nC=cp?3:4,tint=sea===3?"#eaf4ff":sea===2?"#ffe6c8":"#ffffff",span=w+340;
+  for(let i=0;i<nC;i++){
+    const cx=((i*span/nC)+tm*(5+i*2.4))%span-170;
+    const cy=h*(.055+(i%3)*.052)+Math.sin(tm*.18+i)*3;
+    const s=(cp?.62:1)*h*.055*(1+(i%2)*.45);
+    ctx.fillStyle=tint;ctx.globalAlpha=(sea===3?.4:.33)-(i%2)*.07;
+    for(let k=0;k<5;k++){
+      ctx.beginPath();
+      ctx.ellipse(cx+(k-2)*s*.62,cy+Math.sin(k*1.9+i)*s*.17,
+                  s*(.5+.33*Math.cos(k*1.3+i)),s*(.3+.15*Math.sin(k+i)),0,0,6.283);
+      ctx.fill();
+    }
+  }
+  ctx.globalAlpha=1;
+  /* --- sun shafts (skip when the sky is already overcast/stormy) --- */
+  if((sea===0||sea===1)&&wxIdx!==1&&wxIdx!==3){
+    ctx.fillStyle=p.glow;ctx.globalAlpha=(sea===1?.13:.1)*(1-p.dusk*.45);
+    for(let i=0;i<5;i++){
+      const a=.42+i*.42+Math.sin(tm*.22+i)*.05,wd=.05+.018*Math.sin(tm*.45+i),L=h*1.1;
+      ctx.beginPath();ctx.moveTo(sx,sy);
+      ctx.lineTo(sx+Math.cos(a-wd)*L,sy+Math.sin(a-wd)*L);
+      ctx.lineTo(sx+Math.cos(a+wd)*L,sy+Math.sin(a+wd)*L);
+      ctx.closePath();ctx.fill();
+    }
+    ctx.globalAlpha=1;
+  }
+  /* --- birds: a loose pair in spring/summer, a migrating flock in autumn --- */
+  const flock=sea===2,nB=flock?7:sea===3?0:4;
+  if(nB){
+    ctx.strokeStyle=flock?"#41291a":"#12333c";ctx.lineWidth=cp?1.7:2.2;
+    ctx.globalAlpha=.66;ctx.lineCap="round";
+    /* the autumn flock crosses right-to-left holding a V */
+    const lead=w+150-((tm*24)%span);
+    for(let i=0;i<nB;i++){
+      let x,y;
+      if(flock){
+        const row=(i+1)>>1,side=i?(i%2?1:-1):0,gap=cp?20:26;
+        x=lead+row*gap;y=h*.085+side*row*(cp?7:9);
+      }else{
+        x=((i*span/nB)+tm*(13+(i%3)*4))%span-160;y=h*(.075+(i%4)*.032);
+      }
+      y+=Math.sin(tm*.9+i)*3.5;
+      const fl=Math.sin(tm*5.4+i*1.3)*.5+.5,s=cp?5.6:8;
+      ctx.beginPath();
+      ctx.moveTo(x-s,y+fl*s*.55);ctx.quadraticCurveTo(x-s*.4,y-s*.4,x,y);
+      ctx.quadraticCurveTo(x+s*.4,y-s*.4,x+s,y+fl*s*.55);
+      ctx.stroke();
+    }
+    ctx.globalAlpha=1;ctx.lineCap="butt";
+  }
+  /* --- fireflies (summer) / drifting embers (autumn) --- */
+  if(sea===1||sea===2){
+    const nF=cp?7:11;
+    ctx.fillStyle=sea===1?"#fff0a8":"#ffc98a";
+    for(let i=0;i<nF;i++){
+      const x=(i*173+tm*(9+(i%5)*4))%(w+60)-30;
+      const y=h*(.085+((i*53)%40)/100)+Math.sin(tm*(.7+(i%3)*.2)+i)*13;
+      ctx.globalAlpha=(.34+.5*Math.max(0,Math.sin(tm*1.7+i*2.1)))*(.5+p.dusk*.5);
+      ctx.beginPath();ctx.arc(x,y,1.5+(i%2)*.8,0,6.283);ctx.fill();
+    }
+    ctx.globalAlpha=1;
+  }
+  /* --- winter cirrus --- */
+  if(sea===3){
+    ctx.strokeStyle="#dceaf6";ctx.lineWidth=1.4;
+    for(let i=0;i<5;i++){
+      const y=h*(.05+i*.036);
+      ctx.globalAlpha=.2+.07*Math.sin(tm*.5+i);
+      ctx.beginPath();
+      for(let x=-20;x<=w+20;x+=40)ctx.lineTo(x,y+Math.sin(x*.006+tm*.18+i)*4);
+      ctx.stroke();
+    }
+    ctx.globalAlpha=1;
+  }
+}
+function drawSky(w,h,tm,p){
+  const g=ctx.createLinearGradient(0,0,0,h);
+  g.addColorStop(0,p.top);g.addColorStop(.46,p.mid);g.addColorStop(1,p.low);
+  ctx.fillStyle=g;ctx.fillRect(0,0,w,h);
+  /* sun / moon */
+  const sx=w*(.14+p.dusk*.74),sy=h*(.26-Math.sin(p.dusk*Math.PI)*.11),sr=Math.max(28,Math.min(w,h)*.062);
+  const gl=ctx.createRadialGradient(sx,sy,2,sx,sy,sr*2.7);
+  gl.addColorStop(0,p.glow);gl.addColorStop(.24,p.glow+"bb");gl.addColorStop(1,p.glow+"00");
+  ctx.fillStyle=gl;ctx.fillRect(sx-sr*2.8,sy-sr*2.8,sr*5.6,sr*5.6);
+  ctx.globalAlpha=wxIdx===1?.36:.85;ctx.fillStyle=p.glow;ctx.beginPath();ctx.arc(sx,sy,sr*.54,0,6.283);ctx.fill();ctx.globalAlpha=1;
+  drawSkyDecor(w,h,tm,p,stage?stage.sea:ambientSeason,sx,sy);
+  /* hills */
+  ctx.fillStyle=mix(p.hill,"#0b2b28",.34);ctx.beginPath();ctx.moveTo(0,h*.72);
+  for(let x=0;x<=w+40;x+=40)ctx.lineTo(x,h*(.60+Math.sin(x*.0105+1.4)*.05));
+  ctx.lineTo(w,h);ctx.lineTo(0,h);ctx.fill();
+  ctx.globalAlpha=.9;ctx.fillStyle=p.hill;ctx.beginPath();ctx.moveTo(0,h*.8);
+  for(let x=0;x<=w+40;x+=34)ctx.lineTo(x,h*(.685+Math.sin(x*.014+3)*.042));
+  ctx.lineTo(w,h);ctx.lineTo(0,h);ctx.fill();ctx.globalAlpha=1;
+  /* foreground flower silhouettes (identity of the game visible on menus too) */
+  const nF=view.compact?12:20;
+  for(let i=0;i<nF;i++){
+    const x=(i*97+29)%Math.max(1,w+60)-30,base=h*(.80+(i%4)*.05),stem=18+(i%5)*7;
+    const swy=Math.sin(tm*1.1+i)*4;
+    ctx.strokeStyle=p.fol;ctx.lineWidth=2.2;ctx.globalAlpha=.85;
+    ctx.beginPath();ctx.moveTo(x,base);ctx.quadraticCurveTo(x+swy*.5,base-stem*.55,x+swy,base-stem);ctx.stroke();
+    ctx.globalAlpha=.62;ctx.fillStyle=i%3?p.blo:p.glow;
+    const pc=4+(i%3);
+    for(let k=0;k<pc;k++){const a=k*6.283/pc+tm*.15;
+      ctx.beginPath();ctx.ellipse(x+swy+Math.cos(a)*3.4,base-stem+Math.sin(a)*3.4,2.6,1.7,a,0,6.283);ctx.fill()}
+    ctx.globalAlpha=1;
+  }
+  /* seasonal drifting motes */
+  const sea=stage?stage.sea:ambientSeason;
+  for(let i=0;i<(view.compact?14:22);i++){
+    const sp=8+(i%4)*5, x=(i*131+tm*sp)%(w+50)-25, y=h*(.10+((i*37)%56)/100)+Math.sin(tm*.6+i)*10;
+    ctx.globalAlpha=.30+.16*Math.sin(tm*1.5+i);
+    ctx.fillStyle=sea===2?p.blo:(i%3?p.blo:"#ffffff");
+    if(sea===3){ctx.beginPath();ctx.arc(x,y,1.6+i%2,0,6.283);ctx.fill()}
+    else{ctx.beginPath();ctx.ellipse(x,y,3+i%3,1.7,tm*.8+i,0,6.283);ctx.fill()}
+  }
+  ctx.globalAlpha=1;
+  /* weather overlay */
+  if(wxIdx===1){
+    ctx.fillStyle="rgba(226,248,244,.12)";
+    for(let i=0;i<7;i++){const y=h*(.20+i*.085)+Math.sin(tm*.24+i)*12;
+      ctx.beginPath();ctx.ellipse(w*(.1+i*.16),y,w*.3,17+i*3,0,0,6.283);ctx.fill()}
+    ctx.fillStyle="rgba(212,240,238,.09)";ctx.fillRect(0,0,w,h);
+  }else if(wxIdx===2){
+    for(let i=0;i<18;i++){const x=(i*83+tm*(64+i%4*11))%(w+90)-45,y=(i*57+tm*14)%Math.max(120,h*.72);
+      ctx.strokeStyle=i%3?p.blo:p.fol;ctx.globalAlpha=.4;ctx.lineWidth=1.4+i%2;
+      ctx.beginPath();ctx.moveTo(x,y);ctx.quadraticCurveTo(x+18,y-9,x+34,y-2);ctx.stroke()}
+    ctx.globalAlpha=1;
+  }else if(wxIdx===3){
+    ctx.fillStyle="rgba(10,40,54,.2)";ctx.fillRect(0,0,w,h);
+    ctx.strokeStyle="rgba(190,234,255,.5)";ctx.lineWidth=1.2;
+    for(let i=0;i<64;i++){const x=(i*47+tm*150)%(w+70)-35,y=(i*71+tm*270)%Math.max(120,h);
+      ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x-8,y+19);ctx.stroke()}
+  }else if(wxIdx===4){
+    ctx.fillStyle="rgba(255,160,60,.09)";ctx.fillRect(0,0,w,h);
+    ctx.strokeStyle="rgba(255,220,150,.16)";ctx.lineWidth=2;
+    for(let i=0;i<9;i++){ctx.beginPath();
+      for(let x=0;x<=w;x+=16)ctx.lineTo(x,h*(.30+i*.06)+Math.sin(x*.03+tm*2.2+i)*4);
+      ctx.stroke()}
+  }else if(wxIdx===5){
+    for(let i=0;i<5;i++){
+      const gA=ctx.createLinearGradient(0,h*(.05+i*.05),w,h*(.28+i*.05));
+      gA.addColorStop(0,"rgba(120,255,210,0)");gA.addColorStop(.5,"rgba(140,240,255,"+(0.10+0.03*Math.sin(tm+i))+")");
+      gA.addColorStop(1,"rgba(200,150,255,0)");
+      ctx.fillStyle=gA;ctx.beginPath();
+      for(let x=0;x<=w;x+=18)ctx.lineTo(x,h*(.08+i*.05)+Math.sin(x*.008+tm*.7+i)*20);
+      for(let x=w;x>=0;x-=18)ctx.lineTo(x,h*(.20+i*.05)+Math.sin(x*.008+tm*.7+i)*20);
+      ctx.closePath();ctx.fill()}
+    ctx.fillStyle="rgba(30,20,60,.18)";ctx.fillRect(0,0,w,h);
+  }else{
+    ctx.fillStyle="rgba(255,238,170,.06)";ctx.fillRect(0,0,w,h);
+  }
+  ctx.globalAlpha=1;
+}
+
+/* ------------------------------------------------------- crop drawing --
+   Every routine takes an explicit 2D context so the same code paints the
+   board, the seed-rail icons and the tutorial art. No external assets.   */
+function petalPath(q,ps,len,wid){
+  q.beginPath();
+  if(ps===0){q.ellipse(0,-len*.55,wid,len*.55,0,0,6.283)}
+  else if(ps===1){q.moveTo(0,0);q.quadraticCurveTo(wid*1.75,-len*.42,0,-len);q.quadraticCurveTo(-wid*1.75,-len*.42,0,0)}
+  else if(ps===2){q.moveTo(0,0);q.lineTo(wid,-len*.48);q.lineTo(0,-len);q.lineTo(-wid,-len*.48);q.closePath()}
+  else{q.moveTo(-wid,0);q.quadraticCurveTo(0,-len*.35,0,-len);q.quadraticCurveTo(0,-len*.35,wid,0);q.closePath()}
+}
+function centerPath(q,ct,r){
+  q.beginPath();
+  if(ct===0){q.arc(0,0,r,0,6.283)}
+  else if(ct===1){q.arc(0,0,r,0,6.283);q.moveTo(r*.45,0);q.arc(0,0,r*.45,0,6.283,true)}
+  else if(ct===2){for(let i=0;i<10;i++){const a=i*Math.PI/5-Math.PI/2,rr2=i%2?r*.45:r;const x=Math.cos(a)*rr2,y=Math.sin(a)*rr2;i?q.lineTo(x,y):q.moveTo(x,y)}q.closePath()}
+  else{for(let i=0;i<6;i++){const a=i*Math.PI/3;const x=Math.cos(a)*r,y=Math.sin(a)*r;i?q.lineTo(x,y):q.moveTo(x,y)}q.closePath()}
+}
+function drawLeaves(q,style,r,g,col,line){
+  if(style===3)return;
+  q.fillStyle=col;q.strokeStyle=line;q.lineWidth=Math.max(1.2,r*.035);
+  const sets=style===2?3:1;
+  for(let s=0;s<sets;s++){
+    const yy=r*(.12-s*.13),sc=1-s*.2;
+    for(const side of[-1,1]){
+      q.save();q.translate(side*r*.17*sc,yy);q.rotate(side*(style===1?.9:.55));
+      q.beginPath();
+      if(style===1){q.moveTo(0,0);q.quadraticCurveTo(r*.2*sc,-r*.07*sc,r*.34*sc,0);q.quadraticCurveTo(r*.2*sc,r*.07*sc,0,0)}
+      else{q.ellipse(r*.16*sc,0,r*.20*sc*g,r*.095*sc*g,0,0,6.283)}
+      q.fill();q.stroke();q.restore();
+    }
+  }
+}
+function drawCropOn(q,ci,g,cx,cy,r,tm,glow){
+  const C=CROPS[ci],S=C.sh,line="#123d39";
+  const stg=g>=1?3:g>=.62?2:g>=.28?1:0;
+  q.save();q.translate(cx,cy);
+  q.rotate(Math.sin(tm*1.5+cx*.06)*.05*g);
+  q.lineCap="round";q.lineJoin="round";
+  q.fillStyle="rgba(0,0,0,.22)";q.beginPath();q.ellipse(0,r*.42,r*.34,r*.09,0,0,6.283);q.fill();
+  const top=-r*S.h*(.42+.58*g);
+  q.strokeStyle=mix("#1d5c48","#2f8f5f",.4);q.lineWidth=Math.max(2.4,r*.075);
+  q.beginPath();q.moveTo(0,r*.36);
+  if(S.stem===0)q.lineTo(0,top);
+  else if(S.stem===1)q.quadraticCurveTo(r*.10,r*.02,0,top);
+  else q.bezierCurveTo(-r*.16,r*.05,r*.16,top*.55,0,top);
+  q.stroke();
+  if(stg>=1)drawLeaves(q,S.leaf,r,Math.min(1,g*1.5),mix(C.a,"#2f8f5f",.35),line);
+  if(stg>=2){
+    q.save();q.translate(0,top);
+    const bloom=stg>=3?1:.55+.45*((g-.62)/.38);
+    const pl=r*S.pl*bloom,pw=r*S.pw*bloom;
+    if(S.p>0){
+      q.strokeStyle=line;q.lineWidth=Math.max(1,r*.028);
+      for(let k=0;k<S.p;k++){
+        q.save();q.rotate(k*6.283/S.p+tm*.12);
+        q.fillStyle=k%2?C.b:C.a;petalPath(q,S.ps,pl,pw);q.fill();q.stroke();q.restore();
+      }
+      q.fillStyle=C.c;q.strokeStyle=line;centerPath(q,S.ctr,r*.115*bloom);q.fill();q.stroke();
+    }else{
+      /* grain / frond crops: a cluster of pods running up the stalk */
+      q.fillStyle=C.a;q.strokeStyle=line;q.lineWidth=Math.max(1,r*.026);
+      for(let k=0;k<7;k++){const yy=k*r*.075*bloom,side=k%2?1:-1;
+        q.save();q.translate(side*r*.07,yy);q.rotate(side*.5);
+        q.beginPath();q.ellipse(0,0,r*.085*bloom,r*.045*bloom,0,0,6.283);q.fill();q.stroke();q.restore()}
+      q.fillStyle=C.c;centerPath(q,S.ctr,r*.075*bloom);q.fill();q.stroke();
+    }
+    q.restore();
+  }
+  if(glow){
+    const a=.45+.45*Math.sin(tm*7);
+    q.globalAlpha=a;q.strokeStyle=C.b;q.lineWidth=Math.max(2,r*.05);
+    q.beginPath();q.arc(0,top,r*.46,0,6.283);q.stroke();
+    q.globalAlpha=a*.5;q.fillStyle=C.b;
+    for(let k=0;k<4;k++){const a2=tm*2+k*1.57;q.beginPath();q.arc(Math.cos(a2)*r*.52,top+Math.sin(a2)*r*.52,r*.05,0,6.283);q.fill()}
+    q.globalAlpha=1;
+  }
+  q.restore();
+}
+const drawCrop=(ci,g,cx,cy,r,tm,glow)=>drawCropOn(ctx,ci,g,cx,cy,r,tm,glow);
+/* crop icon cache -> data URLs, generated at runtime (no external assets) */
+const iconCache={};
+function cropIcon(i){
+  if(iconCache[i])return iconCache[i];
+  const c=document.createElement("canvas");c.width=c.height=76;
+  const q=c.getContext("2d");
+  drawCropOn(q,i,1,38,48,31,0,false);
+  const url=c.toDataURL();iconCache[i]=url;return url;
+}
+
+/* ------------------------------------------------------------- layout -- */
+function resize(){
+  view.w=Math.max(1,innerWidth);view.h=Math.max(1,innerHeight);
+  view.dpr=Math.min(devicePixelRatio||1,2);
+  canvas.width=Math.round(view.w*view.dpr);canvas.height=Math.round(view.h*view.dpr);
+  canvas.style.width=view.w+"px";canvas.style.height=view.h+"px";
+  ctx.setTransform(view.dpr,0,0,view.dpr,0,0);
+  view.compact=view.w<620;
+  const n=stage?stage.grid:3;view.n=n;
+  const hudH=$("hud").getBoundingClientRect().height||110;
+  const railH=$("rail").getBoundingClientRect().height||104;
+  document.documentElement.style.setProperty("--toastB",(railH+10)+"px");
+  /* reserve a lane between board and rail so the snackbar never covers a plot */
+  const availH=view.h-hudH-railH-58;
+  const availW=view.w-20;
+  view.board=Math.max(150,Math.min(availW,availH,n===3?540:n===4?620:700));
+  view.cell=view.board/n;
+  view.x=(view.w-view.board)/2;
+  view.y=hudH+6+Math.max(0,(availH-view.board)/2);
+}
+addEventListener("resize",()=>{resize();layoutDirty=true;if(screen==="map")fitGoalsSoon()});
+addEventListener("orientationchange",()=>setTimeout(()=>{resize();layoutDirty=true;if(screen==="map")fitGoalsSoon()},120));
+let layoutDirty=false;
+
+/* -------------------------------------------------------- effects fx --- */
+function plotCenter(i){const n=view.n;return{x:view.x+(i%n+.5)*view.cell,y:view.y+((i/n|0)+.5)*view.cell}}
+function burst(i,color,n,spd){
+  const c=plotCenter(i);spd=spd||1;
+  for(let k=0;k<n;k++){const a=rnd()*6.283,s=(26+rnd()*92)*spd;
+    particles.push({x:c.x,y:c.y,vx:Math.cos(a)*s,vy:Math.sin(a)*s-26,life:.45+rnd()*.5,max:.95,size:1.8+rnd()*4.6,color})}
+}
+function floater(i,text,color,big){
+  const c=plotCenter(i);
+  /* sit above the plot so the crop art stays readable */
+  floaters.push({x:c.x,y:c.y-view.cell*.34,text,color,life:1.0,max:1.0,big:!!big});
+  if(floaters.length>14)floaters.splice(0,floaters.length-14);
+}
+function ring(i,color){
+  if(rings.length>5)return;
+  const c=plotCenter(i);rings.push({x:c.x,y:c.y,r:view.cell*.10,life:.34,max:.34,color});
+}
+function flash(){const f=$("flash");f.classList.add("on");setTimeout(()=>f.classList.remove("on"),90)}
+
+let toastT=0;
+function toast(msg){const e=$("toast");e.textContent=msg;e.classList.add("show");clearTimeout(toastT);toastT=setTimeout(()=>e.classList.remove("show"),1500)}
+
+/* ======================================================= stage control == */
+function buildPlots(){
+  const n=stage.grid,total=n*n;
+  plots=Array.from({length:total},()=>({seed:-1,growth:0,ripe:0,tend:0,pulse:0,stone:false,tends:0}));
+  if(stage.stones){
+    srand(stage.id*7919+13);
+    let placed=0,guard=0;
+    while(placed<stage.stones&&guard++<400){
+      const i=Math.floor(rnd()*total);
+      const c=i%n,r=i/n|0;
+      if(plots[i].stone)continue;
+      if(c===0&&r===0)continue;
+      plots[i].stone=true;placed++;
+    }
+  }
+}
+function availableSeeds(){
+  const out=[];for(let i=0;i<CROPS.length;i++)if(CROPS[i].unlock<=stage.id)out.push(i);return out;
+}
+function startStage(id){
+  stage=stageById(id);if(!stage)return;
+  clearEnd();
+  srand(id*2654435761);
+  buildPlots();
+  coins=stage.coin+(U(8)?70:0);
+  timeLeft=stage.time||0;movesLeft=stage.moves||0;
+  chain=0;chainClock=0;bestChain=0;dayT=0;autoTendClock=0;discountNext=false;
+  wxOrder=stage.wx.slice();wxIdx=wxOrder[0];wxClock=stage.time?Math.max(14,stage.time/(wxOrder.length+1)):18;
+  particles.length=floaters.length=rings.length=0;
+  const av=availableSeeds();selected=av[0];focusPlot=0;seedPickedByPlayer=false;
+  prog={earned:0,harv:0,cropN:{},species:{},speciesN:0,fills:0,wasFull:false,withered:0,bestChain:0,harvCount:0};
+  newCropThisStage=-1;
+  if(id>1)for(let i=0;i<CROPS.length;i++)if(CROPS[i].unlock===id)newCropThisStage=i;
+  running=true;finished=false;hintTimer=stage.id<=3?3.5:0;
+  setScreen("play");
+  buildRail();resize();layoutDirty=true;refreshGoals(true);refreshHud(true);
+  if(newCropThisStage>=0&&!save.seen[newCropThisStage]){
+    save.seen[newCropThisStage]=1;writeSave();
+    /* Announce the new seed, but never steal the player's choice: a stage that
+       asks for a specific crop, or a player who already picked by hand, keeps
+       the current selection. The rail still flags the new seed as NEW. */
+    const keepChoice=stage.goals.some(g=>g[0]==="crop");
+    setTimeout(()=>{
+      if(finished||!running||!stage||stage.id!==id)return;
+      if(!keepChoice&&!seedPickedByPlayer)selectSeed(newCropThisStage,true);
+      toast(fmt(t("rNewCrop"),{c:t("crops")[newCropThisStage]}));
+    },700);
+  }
+  SFX.click();
+}
+function goalText(g){
+  if(g[0]==="coin")return fmt(t("gCoin"),{n:g[1]});
+  if(g[0]==="earn")return fmt(t("gEarn"),{n:g[1]});
+  if(g[0]==="harv")return fmt(t("gHarv"),{n:g[1]});
+  if(g[0]==="crop")return fmt(t("gCrop"),{n:g[1],c:t("crops")[g[2]]});
+  if(g[0]==="chain")return fmt(t("gChain"),{n:g[1]});
+  if(g[0]==="pure")return t("gPure");
+  if(g[0]==="vary")return fmt(t("gVary"),{n:g[1]});
+  if(g[0]==="full")return fmt(t("gFull"),{n:g[1]});
+  return "";
+}
+function goalCur(g){
+  if(!prog)return 0;
+  switch(g[0]){
+    case "coin":return Math.min(g[1],coins);
+    case "earn":return Math.min(g[1],prog.earned);
+    case "harv":return Math.min(g[1],prog.harv);
+    case "crop":return Math.min(g[1],prog.cropN[g[2]]||0);
+    case "chain":return Math.min(g[1],prog.bestChain);
+    case "pure":return prog.withered?0:1;
+    case "vary":return Math.min(g[1],prog.speciesN);
+    case "full":return Math.min(g[1],prog.fills);
+  }
+  return 0;
+}
+const goalMax=g=>g[0]==="pure"?1:g[1];
+const goalOk=g=>goalCur(g)>=goalMax(g);
+function allGoalsOk(){return stage.goals.every(goalOk)}
+
+function endStage(win,reason){
+  if(finished)return;finished=true;running=false;
+  const timeBonus=Math.round(Math.max(0,timeLeft)*3);
+  const moveBonus=stage.moves?Math.max(0,movesLeft)*4:0;
+  const score=win?Math.round(prog.earned+timeBonus+moveBonus+prog.bestChain*25):0;
+  let stars=0;
+  if(win){stars=1;if(score>=stage.s2)stars=2;if(score>=stage.s3)stars=3}
+  const prevStars=save.stars[stage.id]||0,prevBest=save.best[stage.id]||0;
+  let gained=0;
+  if(win){
+    if(stars>prevStars){gained+=(stars-prevStars)*10;save.stars[stage.id]=stars}
+    if(prevStars===0)gained+=15;
+    save.essence=(save.essence||0)+gained;
+    if(score>prevBest)save.best[stage.id]=score;
+    writeSave();
+  }
+  lastResult={win,reason,score,stars,gained,newBest:win&&score>prevBest&&prevBest>0,
+              earned:prog.earned,harv:prog.harv,chain:prog.bestChain,timeLeft:Math.max(0,Math.ceil(timeLeft))};
+  showResult();
+  win?SFX.win():SFX.lose();
+}
+
+/* ------------------------------------------------------------ actions -- */
+function spend(n){if(coins<n)return false;coins-=n;return true}
+function useMove(){
+  if(!stage.moves)return;
+  movesLeft--;
+  if(movesLeft<=0&&!allGoalsOk())scheduleEnd(false,"rFailMoves",320);
+}
+function act(i){
+  if(!running||finished||i<0||i>=plots.length)return;
+  focusPlot=i;const p=plots[i];
+  if(p.stone){
+    const c=stoneCost();
+    if(!spend(c)){toast(fmt(t("stoneNeed"),{n:c}));SFX.bad();return}
+    p.stone=false;burst(i,"#a9a08f",18);ring(i,"#cbbfa8");toast(t("stoneMsg"));SFX.stone();shake=6;useMove();return;
+  }
+  if(p.seed<0){
+    const ci=selected,c=seedCost(ci);
+    if(!spend(c)){toast(t("noCoins"));SFX.bad();return}
+    if(discountNext)discountNext=false;
+    p.seed=ci;p.growth=U(4)?0.18:0.01;p.ripe=0;p.tend=.5;p.pulse=1;p.tends=0;
+    burst(i,CROPS[ci].a,9);ring(i,CROPS[ci].b);SFX.plant();useMove();return;
+  }
+  if(p.growth>=1){harvest(i);return}
+  if(p.tend<=0){
+    let push=tendPow();
+    if(CROPS[p.seed].fx===1)push*=2;
+    p.tends++;p.growth=Math.min(1,p.growth+push);p.tend=.72;p.pulse=1;
+    floater(i,t("tend"),"#b7f8df");burst(i,"#8ae6ff",6);SFX.tend();
+    if(p.growth>=1)ripen(i);
+    useMove();
+  }
+}
+let ripeBurst=0,ripeBurstAt=0;
+function ripen(i){
+  const p=plots[i];p.ripe=0;
+  const now=performance.now();
+  if(now-ripeBurstAt>900){ripeBurst=0;ripeBurstAt=now}
+  ripeBurst++;
+  /* only label the first couple in a wave — the glow halo already reads as RIPE */
+  if(ripeBurst<=2)floater(i,t("ripe"),"#ffe9a8",false);
+  burst(i,CROPS[p.seed].b,4,.45);
+  if(ripeBurst<=3)SFX.ripe(p.seed);
+}
+function harvest(i){
+  const p=plots[i],C=CROPS[p.seed];
+  if(C.fx===14&&p.tends<2){ /* Nova Sunflower needs two tends */
+    if(p.tend<=0){p.tends++;p.tend=.6;p.pulse=1;floater(i,t("tend"),"#ffe9a8");SFX.tend();
+      if(p.tends>=2)ring(i,C.b);useMove()}
+    return;
+  }
+  chain=chainClock>0?chain+1:1;
+  let win2=chainWin();
+  if(C.fx===3)win2+=1.6;
+  chainClock=win2;bestChain=Math.max(bestChain,chain);prog.bestChain=bestChain;
+  let v=C.val*valMul();
+  const wm=wxAmp(WX[wxIdx].v),sm=wxAmp(SEA[stage.sea].v);
+  if(C.fx!==13)v*=wm*sm;
+  if(C.fx===2&&(wxIdx===0||wxIdx===4))v*=1.30;
+  if(C.fx===8&&(wxIdx===5||wxIdx===1))v*=1.40;
+  if(C.fx===9)v*=0.5+rnd()*1.7;
+  if(C.fx===12)v*=1+0.12*(chain-1);
+  if(C.fx===15)v+=9*prog.harvCount;
+  v*=1+Math.min(chain-1,9)*(0.08+(U(7)?0.06:0));
+  prog.harvCount++;
+  if(U(9)&&prog.harvCount%8===0)v*=2;
+  const gain=Math.max(1,Math.round(v));
+  coins+=gain;prog.earned+=gain;
+  prog.harv+=(C.fx===7?2:1);
+  prog.cropN[p.seed]=(prog.cropN[p.seed]||0)+1;
+  if(!prog.species[p.seed]){prog.species[p.seed]=1;prog.speciesN++}
+  /* Heart Lotus refunds time but can never push past the stage's own limit,
+     otherwise a lotus farm makes timed stages endless. */
+  if(C.fx===16&&stage.time&&timeLeft<stage.time){
+    const add=Math.min(6,stage.time-timeLeft);timeLeft+=add;floater(i,"+"+Math.round(add)+t("sec"),"#8ae6ff");
+  }
+  if(C.fx===6)discountNext=true;
+  if(C.fx===10){ /* Thunder Vine pushes neighbours */
+    const n=view.n,c0=i%n,r0=i/n|0;
+    [[1,0],[-1,0],[0,1],[0,-1]].forEach(d=>{
+      const c2=c0+d[0],r2=r0+d[1];if(c2<0||c2>=n||r2<0||r2>=n)return;
+      const q=plots[r2*n+c2];if(q.seed>=0&&q.growth<1){q.growth=Math.min(1,q.growth+.25);q.pulse=1;
+        if(q.growth>=1)ripen(r2*n+c2);burst(r2*n+c2,"#ffe066",6)}
+    });
+    burst(i,"#ffe066",14);
+  }
+  floater(i,"+"+gain,C.c,true);burst(i,C.a,24,1.15);ring(i,C.b);
+  SFX.harvest(chain);shake=Math.min(9,3+chain*.6);
+  p.seed=-1;p.growth=0;p.ripe=0;p.tend=0;p.pulse=0;p.tends=0;
+  useMove();
+  checkWin();
+}
+/* A single pending end-of-stage timer. Without this guard checkWin() queued one
+   timeout per frame, and leftovers instantly ended the *next* stage. */
+let endTimer=0;
+function scheduleEnd(win,reason,delay){
+  if(finished||endTimer)return;
+  running=false;
+  endTimer=setTimeout(()=>{endTimer=0;endStage(win,reason)},delay);
+}
+function clearEnd(){if(endTimer){clearTimeout(endTimer);endTimer=0}}
+function checkWin(){
+  if(finished||endTimer)return;
+  if(allGoalsOk()){flash();SFX.goal();toast(t("allDone"));scheduleEnd(true,null,750)}
+}
+
+/* --------------------------------------------------------------- loop -- */
+function update(dt){
+  if(screen!=="play"||!running||finished)return;
+  const n=view.n;
+  if(stage.time){
+    timeLeft-=dt;dayT=1-Math.max(0,timeLeft)/stage.time;
+    if(timeLeft<=0){timeLeft=0;endStage(allGoalsOk(),"rFailTime");return}
+  }else{
+    dayT=Math.min(1,dayT+dt/160);
+  }
+  if(chainClock>0){chainClock-=dt;if(chainClock<=0)chain=0}
+  /* weather cycling */
+  wxClock-=dt;
+  if(wxClock<=0){
+    const k=wxOrder.indexOf(wxIdx);wxIdx=wxOrder[(k+1)%wxOrder.length];
+    wxClock=stage.time?Math.max(14,stage.time/(wxOrder.length+1)):20;
+    toast(t("wx")[wxIdx]);SFX.click();
+  }
+  const gRate=wxAmp(WX[wxIdx].g)*wxAmp(SEA[stage.sea].g)*growMul();
+  const wRate=WX[wxIdx].w*witherMul();
+  if(U(3)){
+    autoTendClock+=dt;
+    if(autoTendClock>=7){
+      autoTendClock=0;
+      for(let i=0;i<plots.length;i++){const p=plots[i];
+        if(p.seed>=0&&p.growth<1){p.growth=Math.min(1,p.growth+tendPow());p.pulse=1;burst(i,"#8ae6ff",4);
+          if(p.growth>=1)ripen(i);break}}
+    }
+  }
+  let filled=0,usable=0;
+  for(let i=0;i<plots.length;i++){
+    const p=plots[i];
+    p.pulse=Math.max(0,p.pulse-dt*2.6);p.tend=Math.max(0,p.tend-dt);
+    if(p.stone)continue;
+    usable++;
+    if(p.seed>=0){
+      filled++;
+      const C=CROPS[p.seed];
+      if(p.growth<1){
+        let r=gRate;
+        if(C.fx===4&&(wxIdx===3||wxIdx===1))r*=1.6;
+        if(C.fx===13)r=growMul()*1.02;
+        p.growth=Math.min(1,p.growth+dt/C.grow*r);
+        if(p.growth>=1)ripen(i);
+      }else{
+        if(C.fx!==11){
+          p.ripe+=dt*wRate;
+          if(p.ripe>15){
+            burst(i,"#9a7c68",12);floater(i,t("withered"),"#c9a48c");
+            p.seed=-1;p.growth=0;p.ripe=0;p.tends=0;chain=0;chainClock=0;
+            prog.withered++;SFX.wither();toast(t("withered"));
+            if(stage.goals.some(g=>g[0]==="pure")){scheduleEnd(false,"rFailPure",450);return}
+          }
+        }
+      }
+    }
+  }
+  if(usable>0&&filled>=usable){if(!prog.wasFull){prog.wasFull=true;prog.fills++;flash();SFX.goal()}}
+  else prog.wasFull=false;
+  for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.life-=dt;p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=110*dt;if(p.life<=0)particles.splice(i,1)}
+  for(let i=floaters.length-1;i>=0;i--){const f=floaters[i];f.life-=dt;f.y-=30*dt;if(f.life<=0)floaters.splice(i,1)}
+  for(let i=rings.length-1;i>=0;i--){const r=rings[i];r.life-=dt;r.r+=view.cell*1.5*dt;if(r.life<=0)rings.splice(i,1)}
+  shake=Math.max(0,shake-dt*26);
+  if(hintTimer>0){hintTimer-=dt;if(hintTimer<=0){
+    const empty=plots.some(p=>!p.stone&&p.seed<0),ripeAny=plots.some(p=>p.seed>=0&&p.growth>=1);
+    toast(ripeAny?t("hintHarvest"):empty?t("hintPlant"):t("hintTend"));
+    hintTimer=stage.id<=3?14:0;
+  }}
+  checkWin();
+}
+function drawBoard(tm){
+  const n=view.n,pad=Math.max(5,view.cell*.045);
+  ctx.save();
+  if(shake>0)ctx.translate((rnd()-.5)*shake,(rnd()-.5)*shake);
+  /* frame */
+  rr(view.x-11,view.y-11,view.board+22,view.board+22,26);
+  ctx.fillStyle="rgba(5,26,30,.5)";ctx.fill();
+  ctx.strokeStyle="rgba(169,255,221,.2)";ctx.lineWidth=2;ctx.stroke();
+  for(let i=0;i<plots.length;i++){
+    const p=plots[i],col=i%n,row=i/n|0;
+    const x=view.x+col*view.cell+pad,y=view.y+row*view.cell+pad,s=view.cell-pad*2;
+    const focused=i===focusPlot;
+    rr(x,y,s,s,Math.max(11,s*.15));
+    if(p.stone){
+      ctx.fillStyle="#4a4740";ctx.fill();
+      ctx.strokeStyle="rgba(220,214,200,.2)";ctx.lineWidth=1.5;ctx.stroke();
+      ctx.save();ctx.translate(x+s/2,y+s/2);
+      ctx.fillStyle="#6d675c";
+      ctx.beginPath();ctx.moveTo(-s*.26,s*.16);ctx.lineTo(-s*.14,-s*.2);ctx.lineTo(s*.1,-s*.24);
+      ctx.lineTo(s*.27,s*.02);ctx.lineTo(s*.12,s*.2);ctx.closePath();ctx.fill();
+      ctx.fillStyle="rgba(255,255,255,.12)";
+      ctx.beginPath();ctx.moveTo(-s*.14,-s*.2);ctx.lineTo(s*.1,-s*.24);ctx.lineTo(s*.02,-s*.02);ctx.closePath();ctx.fill();
+      ctx.fillStyle="#efe6d2";ctx.font="900 "+Math.max(10,s*.15)+"px system-ui";ctx.textAlign="center";ctx.textBaseline="middle";
+      ctx.fillText(stoneCost(),0,s*.3);
+      ctx.restore();
+      continue;
+    }
+    /* a touch of per-bed variation so an empty board reads as tilled soil
+       rather than a grid of identical tiles */
+    const vr=((i*2654435761)>>>0)%100/100;
+    const soil=ctx.createRadialGradient(x+s*(.4+vr*.14),y+s*.32,2,x+s*.5,y+s*.55,s*.78);
+    soil.addColorStop(0,p.seed>=0?"#7b5a41":mix("#5c4029","#6d4c33",vr));
+    soil.addColorStop(1,mix("#262220","#332b24",vr));
+    ctx.fillStyle=soil;ctx.fill();
+    ctx.strokeStyle=focused?"#ffd166":"rgba(199,255,229,.14)";ctx.lineWidth=focused?3:1.5;ctx.stroke();
+    /* furrow lines, angled per bed */
+    ctx.save();ctx.beginPath();rr(x,y,s,s,Math.max(11,s*.15));ctx.clip();
+    ctx.strokeStyle="rgba(255,235,190,.055)";ctx.lineWidth=Math.max(1,s*.018);
+    const ang=vr<.5?0:.5;
+    for(let k=-2;k<=3;k++){
+      ctx.beginPath();
+      ctx.moveTo(x-s*.1,y+s*(.18+k*.2)+ang*s*.1);
+      ctx.lineTo(x+s*1.1,y+s*(.18+k*.2)-ang*s*.1);
+      ctx.stroke();
+    }
+    ctx.restore();
+    if(p.pulse>0){ctx.globalAlpha=p.pulse*.35;ctx.fillStyle="#ffffff";rr(x,y,s,s,Math.max(11,s*.15));ctx.fill();ctx.globalAlpha=1}
+    if(p.seed>=0){
+      const C=CROPS[p.seed],rip=p.growth>=1;
+      drawCrop(p.seed,p.growth,x+s/2,y+s*.54,s*.58,tm,rip);
+      const bw=s*.74,bx=x+s*.13,by=y+s*.855,bh=Math.max(4,s*.05);
+      ctx.fillStyle="rgba(3,20,20,.72)";rr(bx,by,bw,bh,bh/2);ctx.fill();
+      if(rip){
+        /* ripe: the bar becomes a freshness meter that drains as it waits */
+        const wl=C.fx===11?1:Math.max(0,1-p.ripe/15);
+        ctx.fillStyle=wl>.5?"#ffd166":wl>.25?"#ff9d5c":"#ff6b6b";
+        rr(bx,by,bw*wl,bh,bh/2);ctx.fill();
+      }else{
+        ctx.fillStyle=C.a;rr(bx,by,bw*p.growth,bh,bh/2);ctx.fill();
+      }
+      if(CROPS[p.seed].fx===14&&p.tends<2){
+        ctx.fillStyle="#ffe9a8";ctx.font="900 "+Math.max(9,s*.11)+"px system-ui";ctx.textAlign="center";ctx.textBaseline="middle";
+        ctx.fillText(p.tends+"/2",x+s*.5,y+s*.16);
+      }
+    }else{
+      ctx.fillStyle="rgba(211,255,234,.16)";ctx.font="800 "+Math.max(18,s*.24)+"px system-ui";
+      ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText("+",x+s*.5,y+s*.5);
+    }
+  }
+  ctx.restore();
+}
+function rr(x,y,w,h,r){r=Math.min(r,w/2,h/2);ctx.beginPath();ctx.roundRect(x,y,w,h,r)}
+
+function draw(){
+  const w=view.w,h=view.h,tm=performance.now()/1000;
+  ctx.setTransform(view.dpr,0,0,view.dpr,0,0);
+  const p=envPalette();
+  drawSky(w,h,tm,p);
+  if(screen==="title"||screen==="tut"||screen==="result"){
+    /* menu backdrop: a living showcase bed of the game's real crops, so the very
+       first screen already shows what is being grown. Two staggered rows. */
+    const scale=Math.min(w,h)*(view.compact?.075:.062);
+    const count=view.compact?6:10;
+    for(let row=0;row<2;row++){
+      const band=h*(row?.945:.795),sc=scale*(row?1.25:1);
+      for(let i=0;i<count+row;i++){
+        const idx=(i*5+row*3+((tm/11)|0)*2)%CROPS.length;
+        const x=w*((i+.5+row*.4)/(count+row))+Math.sin(tm*.3+i+row)*7;
+        const y=band+Math.sin(i*1.7+row)*h*.018;
+        ctx.globalAlpha=row?.95:.7;
+        drawCropOn(ctx,idx,1,x,y,sc*(1+(i%3)*.12),tm,false);
+      }
+    }
+    ctx.globalAlpha=1;
+  }
+  if(screen==="play"||screen==="pause"){
+    drawBoard(tm);
+    for(const r of rings){const a=Math.max(0,r.life/r.max);ctx.globalAlpha=a*a*.55;ctx.strokeStyle=r.color;
+      ctx.lineWidth=2+2*a;ctx.beginPath();ctx.arc(r.x,r.y,r.r,0,6.283);ctx.stroke()}
+    ctx.globalAlpha=1;
+    for(const q of particles){ctx.globalAlpha=Math.max(0,q.life/q.max);ctx.fillStyle=q.color;
+      ctx.beginPath();ctx.arc(q.x,q.y,q.size,0,6.283);ctx.fill()}
+    ctx.globalAlpha=1;ctx.textAlign="center";ctx.textBaseline="middle";
+    for(const f of floaters){
+      const a=Math.max(0,f.life/f.max);ctx.globalAlpha=Math.min(1,a*1.5);
+      ctx.font="900 "+Math.max(13,view.cell*(f.big?.2:.14))+"px system-ui";
+      ctx.lineWidth=Math.max(3,view.cell*.045);ctx.lineJoin="round";
+      ctx.strokeStyle="rgba(2,18,15,.8)";ctx.strokeText(f.text,f.x,f.y);
+      ctx.fillStyle=f.color;ctx.fillText(f.text,f.x,f.y);
+    }
+    ctx.globalAlpha=1;
+  }
+}
+
+/* ============================================================ HUD DOM == */
+const hudCache={};
+function setTxt(id,v){if(hudCache[id]!==v){hudCache[id]=v;$(id).textContent=v}}
+function refreshHud(force){
+  if(force)Object.keys(hudCache).forEach(k=>delete hudCache[k]);
+  if(!stage)return;
+  setTxt("lCoins",t("hCoins"));setTxt("vCoins",String(coins));
+  if(stage.moves){setTxt("lTime",t("movesLeft"));setTxt("vTime",String(Math.max(0,movesLeft)))}
+  else{setTxt("lTime",t("hTime"));setTxt("vTime",Math.ceil(Math.max(0,timeLeft))+t("sec"))}
+  const warn=stage.time?timeLeft<=15:movesLeft<=6;
+  $("timeStat").classList.toggle("warn",!!warn);
+  setTxt("lWx",t("sea")[stage.sea]);
+  setTxt("vWx",t("wx")[wxIdx]);
+  const g=(wxAmp(WX[wxIdx].g)*wxAmp(SEA[stage.sea].g)*growMul()).toFixed(2);
+  const v=(wxAmp(WX[wxIdx].v)*wxAmp(SEA[stage.sea].v)*valMul()).toFixed(2);
+  /* compact glyph form so it never clips on a 360px screen; words stay in aria */
+  setTxt("vWxFx","▲"+g+"   ◈"+v);
+  const aria=t("hWeather")+": "+t("wx")[wxIdx]+", "+t("sea")[stage.sea]+", "+t("sGrow")+" x"+g+", "+t("sValue")+" x"+v;
+  if(hudCache._wa!==aria){hudCache._wa=aria;$("wxStat").setAttribute("aria-label",aria);$("wxStat").title=aria}
+  const ct=$("chainTag");
+  if(chain>1){ct.textContent="x"+chain+" "+t("hCombo");ct.classList.add("on")}else ct.classList.remove("on");
+  /* rail affordability — only touch the DOM when a value actually changes */
+  for(const el of railEls){
+    const ci=+el.dataset.crop,c=seedCost(ci),poor=coins<c?"1":"0";
+    if(el._poor!==poor){el._poor=poor;el.dataset.poor=poor}
+    if(el._c!==c){el._c=c;el.querySelector(".sc").textContent=c}
+  }
+}
+let goalEls=[];
+function refreshGoals(rebuild){
+  const row=$("goalRow");
+  if(rebuild){
+    row.innerHTML="";goalEls=[];
+    for(const g of stage.goals){
+      const d=document.createElement("div");d.className="goal";
+      d.innerHTML='<span class="gt"></span><span class="gn"></span>';
+      row.appendChild(d);goalEls.push(d);
+    }
+  }
+  stage.goals.forEach((g,i)=>{
+    const el=goalEls[i];if(!el)return;
+    const txt=goalText(g);
+    if(el._t!==txt){el._t=txt;el.querySelector(".gt").textContent=txt}
+    const cur=goalCur(g),mx=goalMax(g);
+    const nt=g[0]==="pure"?(prog&&prog.withered?"0":"OK"):cur+"/"+mx;
+    if(el._n!==nt){el._n=nt;el.querySelector(".gn").textContent=nt}
+    const ok=cur>=mx;
+    if(el._ok!==ok){
+      const first=el._ok===undefined;      /* goals that start satisfied (e.g. "no wither") must not celebrate */
+      el._ok=ok;el.classList.toggle("done",ok);
+      if(ok&&running&&!first){SFX.goal();toast(t("goalDone"))}
+    }
+  });
+}
+let railEls=[];
+function buildRail(){
+  const inner=$("railInner");inner.innerHTML="";railEls=[];
+  const av=availableSeeds();
+  const names=t("crops"),fxs=t("fx");
+  for(const ci of av){
+    const b=document.createElement("button");
+    b.className="seed";b.type="button";b.dataset.crop=ci;
+    b.dataset.on=ci===selected?"1":"0";
+    b.title=names[ci]+" — "+fxs[CROPS[ci].fx];
+    b.setAttribute("aria-label",names[ci]+", "+t("cost")+" "+seedCost(ci)+". "+fxs[CROPS[ci].fx]);
+    const ic=document.createElement("div");ic.className="ico";ic.style.backgroundImage="url("+cropIcon(ci)+")";
+    const nm=document.createElement("div");nm.className="sn2";nm.textContent=names[ci];
+    const cs=document.createElement("div");cs.className="sc";cs.textContent=seedCost(ci);
+    b.appendChild(ic);b.appendChild(nm);b.appendChild(cs);
+    b.addEventListener("click",e=>{e.stopPropagation();selectSeed(ci)});
+    inner.appendChild(b);railEls.push(b);
+  }
+  requestAnimationFrame(()=>{$("rail").dataset.scroll=inner.scrollWidth>inner.clientWidth+4?"1":"0"});
+}
+function selectSeed(ci,quiet){
+  selected=ci;
+  if(!quiet)seedPickedByPlayer=true;
+  railEls.forEach(el=>el.dataset.on=(+el.dataset.crop===ci)?"1":"0");
+  const el=railEls.find(e=>+e.dataset.crop===ci);
+  if(el&&el.scrollIntoView)try{el.scrollIntoView({block:"nearest",inline:"center",behavior:"smooth"})}catch(_){}
+  if(quiet)return;
+  SFX.click();
+  toast(t("crops")[ci]+" · "+t("fx")[CROPS[ci].fx]);
+}
+
+/* ========================================================= screen mgmt = */
+const SCREENS={title:"scTitle",map:"scMap",lab:"scLab",result:"scResult",pause:"scPause",tut:"scTut"};
+function setScreen(s){
+  screen=s;
+  for(const k in SCREENS)$(SCREENS[k]).classList.toggle("hidden",k!==s);
+  const playing=(s==="play");
+  $("hud").classList.toggle("hidden",!playing);
+  $("rail").classList.toggle("hidden",!playing);
+  if(s==="pause"){$("hud").classList.remove("hidden");$("rail").classList.remove("hidden")}
+  if(s==="title"||s==="map"||s==="lab"){
+    /* the menu garden follows how far the player has come through the chapters */
+    ambientSeason=stageById(maxUnlocked()).sea;wxIdx=[0,0,2,1][ambientSeason];dayT=.16;
+  }
+  setTimeout(()=>{resize()},30);
+}
+/* ---- title ---- */
+function refreshTitle(){
+  $("tKicker").textContent=t("kicker");
+  $("tTitle").textContent=t("title");
+  $("tTagline").textContent=t("tagline");
+  $("tStarLbl").textContent=t("totalStars");$("tStarVal").textContent=totalStars()+"/"+(STAGES.length*3);
+  $("tStageLbl").textContent=t("stagesLbl");$("tStageVal").textContent=clearedCount()+"/"+STAGES.length;
+  $("tEssLbl").textContent=t("essence");$("tEssVal").textContent=save.essence||0;
+  const started=clearedCount()>0;
+  $("btnPlay").textContent=started?(t("cont")+" · "+t("stageWord")+" "+maxUnlocked()):t("play");
+  $("btnMap").textContent=t("map");
+  $("btnLab").textContent=t("upgrades");
+  $("btnHow").textContent=t("howTo");
+  $("btnSound").textContent=save.sound?t("soundOn"):t("soundOff");
+  $("btnSound").setAttribute("aria-label",t("ariaSound"));
+  const nextChap=t("chapters")[stageById(maxUnlocked()).ch];
+  $("tVer").textContent=nextChap+" · "+t("stageWord")+" "+maxUnlocked()+"/"+STAGES.length;
+}
+/* ---- map ---- */
+/* Wordy locales (de/ru) used to lose a whole second goal to an ellipsis.
+   Nothing is clipped any more: the type shrinks a few tenths at a time and,
+   if even the smallest legible size still needs more room, the card grows. */
+const SGOAL_BASE=10.5,SGOAL_MIN=8,SGOAL_MAXH=Math.round(SGOAL_BASE*1.34*5);
+function fitGoals(){
+  const els=$("mapList").querySelectorAll(".sgoal");
+  for(const el of els){
+    el.style.removeProperty("--sgf");
+    if(el.scrollHeight<=SGOAL_MAXH)continue;
+    let fs=SGOAL_BASE;
+    for(let i=0;i<6&&fs>SGOAL_MIN;i++){
+      fs=Math.max(SGOAL_MIN,fs-.5);
+      el.style.setProperty("--sgf",fs+"px");
+      if(el.scrollHeight<=SGOAL_MAXH)break;
+    }
+  }
+}
+let fitPending=false;
+function fitGoalsSoon(){
+  if(fitPending)return;fitPending=true;
+  requestAnimationFrame(()=>{fitPending=false;if($("mapList").firstChild)fitGoals()});
+}
+function buildMap(){
+  const host=$("mapList");host.innerHTML="";
+  $("mapTitle").textContent=t("stageSelect");
+  $("mapSub").textContent=t("stageSub");
+  $("mapStarLbl").textContent=t("totalStars");
+  $("mapStarVal").textContent=totalStars()+"/"+(STAGES.length*3);
+  $("mapLab").textContent=t("upgrades");
+  $("mapLab").setAttribute("aria-label",t("labTitle"));
+  const unlocked=maxUnlocked();
+  const chapters=t("chapters"),csub=t("chapterSub");
+  for(let ch=0;ch<4;ch++){
+    const list=STAGES.filter(s=>s.ch===ch);
+    const sec=document.createElement("div");sec.className="chapter";
+    let got=0,tot=list.length*3;list.forEach(s=>got+=save.stars[s.id]||0);
+    const hd=document.createElement("div");hd.className="chapHead";
+    hd.innerHTML='<h3></h3><div class="cs"></div><div class="cstar"></div>';
+    hd.querySelector("h3").textContent=chapters[ch];
+    hd.querySelector(".cs").textContent=csub[ch];
+    hd.querySelector(".cstar").textContent="★ "+got+"/"+tot;
+    sec.appendChild(hd);
+    const grid=document.createElement("div");grid.className="stageGrid";
+    for(const s of list){
+      const b=document.createElement("button");b.className="stageCard";b.type="button";
+      const locked=s.id>unlocked,stars=save.stars[s.id]||0;
+      if(locked)b.classList.add("locked");
+      if(stars>0)b.classList.add("cleared");
+      if(s.id===unlocked&&!locked)b.classList.add("next");
+      const goalStr=s.goals.map(goalText).join(" · ");
+      b.innerHTML='<span class="sn"></span><span class="sg"></span><span class="sgoal"></span><span class="stars"></span>';
+      b.querySelector(".sn").textContent=s.id;
+      b.querySelector(".sg").textContent=s.grid+"x"+s.grid+" · "+(s.moves?fmt(t("limMoves"),{n:s.moves}):fmt(t("limTime"),{n:s.time}))+(s.stones?" · ◆"+s.stones:"");
+      b.querySelector(".sgoal").textContent=goalStr;
+      if(locked)b.setAttribute("aria-label",t("stageWord")+" "+s.id+" — "+fmt(t("unlockAt"),{n:s.id-1}));
+      const sw=b.querySelector(".stars");
+      for(let k=0;k<3;k++){const i2=document.createElement("i");i2.className="st"+(k<stars?" on":"");sw.appendChild(i2)}
+      /* NEW only where a fresh seed is actually waiting to be discovered */
+      const nc=s.id>1?CROPS.findIndex(c=>c.unlock===s.id):-1;
+      if(nc>=0&&!locked&&stars===0&&!save.seen[nc]){
+        const nb=document.createElement("span");nb.className="newBadge";nb.textContent=t("newTag");b.appendChild(nb);
+      }
+      if(locked){b.disabled=true;const l=document.createElement("span");l.className="lock";l.textContent="\u{1F512}";b.appendChild(l)}
+      else b.addEventListener("click",()=>{if(!save.tut){pendingStage=s.id;openTut()}else startStage(s.id)});
+      grid.appendChild(b);
+    }
+    sec.appendChild(grid);host.appendChild(sec);
+  }
+  fitGoalsSoon();
+}
+/* ---- lab ---- */
+function buildLab(){
+  $("labTitle").textContent=t("labTitle");
+  $("labSub").textContent=t("labSub");
+  $("labEssLbl").textContent=t("essence");
+  $("labEssVal").textContent=save.essence||0;
+  const host=$("labTree");host.innerHTML="";
+  const names=t("upg"),descs=t("upgD"),brs=t("branches");
+  for(let b=0;b<3;b++){
+    const col=document.createElement("div");col.className="branch b"+b;
+    const h=document.createElement("h4");h.textContent=brs[b];col.appendChild(h);
+    for(const idx of BRANCH_ORDER[b]){
+      const u=UPG[idx],owned=U(idx),reqOk=u.req<0||U(u.req);
+      const afford=!owned&&reqOk&&(save.essence||0)>=u.cost;
+      const btn=document.createElement("button");btn.className="node"+(owned?" owned":"")+(!reqOk?" blocked":"")+(afford?" afford":"");
+      btn.type="button";
+      btn.innerHTML='<div class="nh"><span class="dot"></span><span class="nn"></span><span class="nc"></span></div><div class="nd"></div><div class="ns"></div>';
+      btn.querySelector(".nn").textContent=names[idx];
+      btn.querySelector(".nc").textContent=u.cost+" ◇";
+      btn.querySelector(".nd").textContent=descs[idx];
+      btn.querySelector(".ns").textContent=owned?t("uOwned"):(!reqOk?t("uLocked"):(afford?t("uBuy"):t("uNoEssence")));
+      if(!owned&&reqOk)btn.addEventListener("click",()=>buyNode(idx));
+      else btn.disabled=true;
+      col.appendChild(btn);
+    }
+    host.appendChild(col);
+  }
+}
+function buyNode(i){
+  const u=UPG[i];
+  if(U(i))return;
+  if(u.req>=0&&!U(u.req)){toast(t("uLocked"));SFX.bad();return}
+  if((save.essence||0)<u.cost){toast(t("uNoEssence"));SFX.bad();return}
+  save.essence-=u.cost;save.upg[i]=1;writeSave();
+  toast(t("uDone")+" · "+t("upg")[i]);SFX.buy();buildLab();
+}
+/* ---- result ---- */
+function showResult(){
+  const R=lastResult;
+  $("rKicker").textContent=t("rKicker");
+  $("rTitle").textContent=R.win?t("rWin"):t("rLose");
+  const sw=$("resStars").children;
+  for(let i=0;i<3;i++){sw[i].className="st big";}
+  setTimeout(()=>{
+    for(let i=0;i<R.stars;i++)setTimeout(()=>{sw[i].className="st big on pop";SFX.star(i)},i*260);
+    for(let i=R.stars;i<3;i++)sw[i].className="st big pop";
+  },200);
+  const rows=[[t("rScore"),R.score],[t("rCoins"),R.earned],[t("rHarv"),R.harv],[t("rCombo"),"x"+R.chain]];
+  if(stage.time)rows.push([t("rTime"),R.timeLeft+t("sec")]);
+  if(R.win)rows.push([t("rEssence"),"+"+R.gained+" ◇"]);
+  if(!R.win&&R.reason)rows.push(["",t(R.reason)]);
+  const host=$("rStats");host.innerHTML="";
+  for(const [k,v] of rows){const d=document.createElement("div");
+    d.innerHTML='<span></span><b></b>';d.children[0].textContent=k;d.children[1].textContent=v;host.appendChild(d)}
+  const ban=$("rBanner");
+  let bt="";
+  if(R.win&&R.newBest)bt=t("rNewBest");
+  const nxt=stage.id+1;
+  if(R.win&&nxt<=STAGES.length){
+    const nc=CROPS.findIndex(c=>c.unlock===nxt);
+    if(nc>=0)bt=(bt?bt+"  ·  ":"")+fmt(t("rNewCrop"),{c:t("crops")[nc]});
+  }
+  ban.textContent=bt;ban.classList.toggle("hidden",!bt);
+  $("rMap").textContent=t("map");$("rRetry").textContent=t("retry");
+  const canNext=R.win&&stage.id<STAGES.length;
+  $("rNext").textContent=canNext?t("next"):t("retry");
+  $("rNext").style.display=canNext?"":"none";
+  $("rRetry").style.display=canNext?"":"none";
+  if(!canNext){$("rNext").style.display="";$("rNext").textContent=t("retry")}
+  setScreen("result");
+}
+/* ---- tutorial ---- */
+let pendingStage=1;
+function openTut(){tutStep=0;renderTut();setScreen("tut")}
+function renderTut(){
+  $("uKicker").textContent=t("howTo")+" · "+(tutStep+1)+"/4";
+  $("uTitle").textContent=t("tutT")[tutStep];
+  $("uBody").textContent=t("tutB")[tutStep];
+  const d=$("uDots").children;for(let i=0;i<4;i++)d[i].className=i===tutStep?"on":"";
+  $("uSkip").textContent=t("tutSkip");
+  $("uNext").textContent=tutStep<3?t("tutNext"):t("tutDone");
+  drawTutArt(tutStep);
+}
+function drawTutArt(step){
+  const c=$("tutCanvas"),g=c.getContext("2d");
+  const W=c.width,H=c.height;
+  const gr=g.createLinearGradient(0,0,0,H);gr.addColorStop(0,"#12464a");gr.addColorStop(1,"#07272e");
+  g.fillStyle=gr;g.fillRect(0,0,W,H);
+  const cellW=W/3;
+  for(let i=0;i<3;i++){
+    const x=i*cellW+14,y=44,s=cellW-28;
+    g.beginPath();g.roundRect(x,y,s,s,14);
+    const soil=g.createRadialGradient(x+s*.45,y+s*.3,2,x+s*.5,y+s*.55,s*.8);
+    soil.addColorStop(0,"#7b5a41");soil.addColorStop(1,"#2b2620");
+    g.fillStyle=soil;g.fill();
+    g.strokeStyle=(step===0&&i===1)||(step===1&&i===1)||(step===2)?"#ffd166":"rgba(199,255,229,.16)";
+    g.lineWidth=(step<3&&i===1)||step===2?3:1.5;g.stroke();
+  }
+  const cy=44+(cellW-28)*.5+cellW*.04,cr=cellW*.30;
+  g.textAlign="center";g.textBaseline="middle";
+  if(step===0){
+    /* a seed card, an empty bed to aim at, and the sprout that results */
+    drawCropOn(g,5,1,cellW*.5,cy,cr,0,false);
+    g.fillStyle="rgba(255,209,102,.85)";g.font="900 34px system-ui";
+    g.fillText("+",cellW*1.5,cy);
+    drawCropOn(g,5,.34,cellW*2.5,cy,cr,0,false);
+    g.strokeStyle="rgba(255,209,102,.9)";g.lineWidth=2.5;g.setLineDash([5,5]);
+    g.beginPath();g.moveTo(cellW*.5+cr*.7,cy-cr*.2);g.lineTo(cellW*1.5-cr*.5,cy-cr*.2);g.stroke();
+    g.setLineDash([]);
+  }else if(step===1){
+    drawCropOn(g,0,.3,cellW*.5,cy,cr,0,false);
+    drawCropOn(g,0,.72,cellW*1.5,cy,cr,0,false);
+    drawCropOn(g,0,1,cellW*2.5,cy,cr,0,true);
+    g.fillStyle="#8ae6ff";g.font="900 22px system-ui";
+    g.fillText("›",cellW,cy-cr*.1);g.fillText("›",cellW*2,cy-cr*.1);
+  }else if(step===2){
+    drawCropOn(g,2,1,cellW*.5,cy,cr,0,true);
+    drawCropOn(g,5,1,cellW*1.5,cy,cr,0,true);
+    drawCropOn(g,7,1,cellW*2.5,cy,cr,0,true);
+    g.fillStyle="#ffd166";g.font="900 19px system-ui";g.fillText("x1   x2   x3",W/2,24);
+  }else{
+    drawCropOn(g,7,1,cellW*.5,cy,cr,0,false);
+    drawCropOn(g,13,1,cellW*1.5,cy,cr,0,false);
+    drawCropOn(g,17,1,cellW*2.5,cy,cr,0,false);
+    g.font="900 17px system-ui";
+    for(let i=0;i<3;i++){
+      g.fillStyle="#ffd166";
+      g.fillText("★",W/2-24+i*24,24);
+    }
+  }
+}
+/* ---- pause ---- */
+function refreshPause(){
+  $("pKicker").textContent=t("pausedKick");
+  $("pTitle").textContent=t("paused");
+  $("pHint").textContent=t("resumeHint");
+  $("pResume").textContent=t("resume");
+  $("pRestart").textContent=t("restart");
+  $("pQuit").textContent=t("quitStage");
+  $("pSound").textContent=save.sound?t("soundOn"):t("soundOff");
+}
+function togglePause(){
+  if(screen==="play"){running=false;refreshPause();setScreen("pause")}
+  else if(screen==="pause"){running=true;setScreen("play");last=performance.now()}
+}
+
+/* ============================================================== input == */
+function pointerPos(e){
+  const r=canvas.getBoundingClientRect();
+  return {x:(e.clientX-r.left)*view.w/r.width,y:(e.clientY-r.top)*view.h/r.height};
+}
+canvas.addEventListener("pointerdown",e=>{
+  if(screen!=="play")return;
+  e.preventDefault();
+  const p=pointerPos(e),n=view.n;
+  if(p.x>=view.x&&p.x<view.x+view.board&&p.y>=view.y&&p.y<view.y+view.board){
+    const c=Math.floor((p.x-view.x)/view.cell),r=Math.floor((p.y-view.y)/view.cell);
+    if(c>=0&&c<n&&r>=0&&r<n)act(r*n+c);
+  }
+},{passive:false});
+canvas.addEventListener("contextmenu",e=>e.preventDefault());
+
+addEventListener("keydown",e=>{
+  if(e.code==="Escape"){
+    if(screen==="play"||screen==="pause")togglePause();
+    else if(screen==="map"||screen==="lab"){setScreen("title");refreshTitle()}
+    e.preventDefault();return;
+  }
+  if(screen==="tut"){if(e.code==="Enter"||e.code==="Space"){tutNext();e.preventDefault()}return}
+  if(screen==="title"){if(e.code==="Enter"||e.code==="Space"){goPlay();e.preventDefault()}return}
+  if(screen==="result"){if(e.code==="Enter"||e.code==="Space"){$("rNext").click();e.preventDefault()}return}
+  if(screen!=="play")return;
+  if(e.code==="KeyP"){togglePause();e.preventDefault();return}
+  const av=availableSeeds();
+  const dm=/^(Digit|Numpad)([1-9])$/.exec(e.code);
+  if(dm){const k=+dm[2]-1;if(av[k]!==undefined)selectSeed(av[k]);e.preventDefault();return}
+  if(e.code==="KeyQ"||e.code==="BracketLeft"){const k=av.indexOf(selected);selectSeed(av[(k-1+av.length)%av.length]);e.preventDefault();return}
+  if(e.code==="KeyE"||e.code==="BracketRight"){const k=av.indexOf(selected);selectSeed(av[(k+1)%av.length]);e.preventDefault();return}
+  const n=view.n;let c=focusPlot%n,r=focusPlot/n|0;
+  if(e.code==="ArrowLeft"||e.code==="KeyA")c=(c+n-1)%n;
+  else if(e.code==="ArrowRight"||e.code==="KeyD")c=(c+1)%n;
+  else if(e.code==="ArrowUp"||e.code==="KeyW")r=(r+n-1)%n;
+  else if(e.code==="ArrowDown"||e.code==="KeyS")r=(r+1)%n;
+  else if(e.code==="Enter"||e.code==="Space"){act(focusPlot);e.preventDefault();return}
+  else return;
+  focusPlot=r*n+c;e.preventDefault();
+});
+/* store review requires audio to stop while backgrounded: the scheduler is
+   torn down as well as the context, and both come back on return */
+function audioSuspend(){
+  if(bgmTimer){clearInterval(bgmTimer);bgmTimer=0}
+  if(actx){try{actx.suspend()}catch(_){}}
+}
+function audioResume(){
+  if(actx&&save.sound){try{actx.resume()}catch(_){}}
+  if(bgmOn&&save.sound&&!bgmTimer){bgmNext=0;bgmTimer=setInterval(bgmSchedule,140)}
+}
+addEventListener("blur",()=>{audioSuspend();if(screen==="play"){running=false;refreshPause();setScreen("pause")}});
+addEventListener("focus",()=>{if(!document.hidden)audioResume()});
+document.addEventListener("visibilitychange",()=>{
+  if(document.hidden){audioSuspend();if(screen==="play"){running=false;refreshPause();setScreen("pause")}}
+  else audioResume();
+});
+
+/* ------------------------------------------------------------ buttons -- */
+function goPlay(){
+  if(!save.tut){pendingStage=maxUnlocked();openTut();return}
+  startStage(maxUnlocked());
+}
+function tutNext(){
+  if(tutStep<3){tutStep++;renderTut();SFX.click()}
+  else{save.tut=true;writeSave();startStage(pendingStage||1)}
+}
+$("btnPlay").addEventListener("click",()=>{pendingStage=maxUnlocked();goPlay()});
+$("btnMap").addEventListener("click",()=>{buildMap();setScreen("map");SFX.click()});
+$("btnLab").addEventListener("click",()=>{buildLab();setScreen("lab");SFX.click()});
+$("btnHow").addEventListener("click",()=>{pendingStage=maxUnlocked();openTut();SFX.click()});
+$("btnSound").addEventListener("click",()=>{
+  save.sound=!save.sound;writeSave();
+  /* one switch drives both buses: music and effects */
+  if(!save.sound){bgmStop(.25);if(actx){try{actx.suspend()}catch(_){}}}
+  else{bgmKicked=true;SFX.click();bgmStart()}
+  refreshTitle();
+});
+$("mapBack").addEventListener("click",()=>{setScreen("title");refreshTitle();SFX.click()});
+$("mapLab").addEventListener("click",()=>{buildLab();setScreen("lab");SFX.click()});
+$("labBack").addEventListener("click",()=>{buildMap();setScreen("map");SFX.click()});
+$("pauseBtn").addEventListener("click",e=>{e.stopPropagation();togglePause()});
+$("pResume").addEventListener("click",()=>togglePause());
+$("pRestart").addEventListener("click",()=>startStage(stage.id));
+$("pQuit").addEventListener("click",()=>{buildMap();setScreen("map");refreshTitle()});
+$("pSound").addEventListener("click",()=>{
+  save.sound=!save.sound;writeSave();
+  if(!save.sound){bgmStop(.25);audioSuspend()}
+  else{bgmKicked=true;SFX.click();bgmStart()}
+  refreshPause();
+});
+$("uSkip").addEventListener("click",()=>{save.tut=true;writeSave();startStage(pendingStage||1)});
+$("uNext").addEventListener("click",tutNext);
+$("rMap").addEventListener("click",()=>{buildMap();setScreen("map");SFX.click()});
+$("rRetry").addEventListener("click",()=>startStage(stage.id));
+$("rNext").addEventListener("click",()=>{
+  const R=lastResult;
+  if(R&&R.win&&stage.id<STAGES.length)startStage(stage.id+1);
+  else startStage(stage.id);
+});
+
+/* ------------------------------------------------------------- i18n UI - */
+function applyLang(){
+  document.documentElement.lang=curLang;
+  document.title=t("title");
+  canvas.setAttribute("aria-label",t("ariaGame"));
+  $("pauseBtn").setAttribute("aria-label",t("ariaPause"));
+  $("mapBack").setAttribute("aria-label",t("ariaBack"));
+  $("labBack").setAttribute("aria-label",t("ariaBack"));
+  document.querySelectorAll(".lang-btn").forEach(b=>b.classList.toggle("active",b.dataset.lang===curLang));
+  refreshTitle();
+  if(screen==="map")buildMap();
+  if(screen==="lab")buildLab();
+  if(screen==="tut")renderTut();
+  if(screen==="pause")refreshPause();
+  if(stage&&(screen==="play"||screen==="pause")){buildRail();refreshGoals(true);refreshHud(true)}
+  if(screen==="result"&&lastResult)showResult();
+}
+function setLang(code){
+  if(!I18N[code])return;
+  curLang=code;save.lang=code;writeSave();applyLang();
+}
+function initLang(){
+  const nav=(navigator.language||"en").slice(0,2).toLowerCase();
+  curLang=(save.lang&&I18N[save.lang])?save.lang:(I18N[nav]?nav:"en");
+  const row=$("langRow");row.innerHTML="";
+  for(const code of LANG_ORDER){
+    const b=document.createElement("button");b.type="button";b.className="lang-btn";
+    b.textContent=I18N[code].name;b.dataset.lang=code;
+    b.addEventListener("click",e=>{e.stopPropagation();setLang(code)});
+    row.appendChild(b);
+  }
+  applyLang();
+}
+
+/* ================================================================ boot = */
+loadSave();
+initLang();
+setScreen("title");
+resize();
+
+let last=performance.now(),acc=0,hudAt=0,menuDrawAt=0;
+const STEP=1/60;
+function loop(now){
+  requestAnimationFrame(loop);
+  const delta=Math.min(.1,(now-last)/1000);last=now;
+  acc+=delta;let guard=0;
+  while(acc>=STEP&&guard++<6){update(STEP);acc-=STEP}
+  if(acc>STEP*6)acc=0;
+  if(layoutDirty){layoutDirty=false;resize()}
+  /* the long scrolling menus don't need a 60fps canvas behind them */
+  if(screen==="map"||screen==="lab"){if(now-menuDrawAt>50){menuDrawAt=now;draw()}}
+  else draw();
+  /* HUD is DOM: refresh at ~15Hz, not every frame, to keep the canvas at 60 */
+  if(screen==="play"&&now-hudAt>66){hudAt=now;refreshHud(false);refreshGoals(false)}
+}
+requestAnimationFrame(loop);
+})();
+</script>
+<script>
+/* Microsoft Store PWA build: offline support. Failure is non-fatal - the game
+   is a single self-contained HTML file and runs fine without a worker. */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('sw.js').catch(function () {});
+  });
+}
+</script>
+</body>
+</html>
