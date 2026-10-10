@@ -8,7 +8,7 @@ Plant, tend and chain-harvest a living garden across 24 stages and four seasons.
 
 `Bloom Circuit` is an installable Progressive Web App (PWA). The whole game is a single
 self-contained HTML file with an offline service worker - there are no runtime
-network calls, no accounts, no ads and no tracking. It runs fully offline once
+network calls, no accounts and no tracking. It runs fully offline once
 installed.
 
 * Live URL: <https://rainforest-0305.github.io/bloom-circuit/>
